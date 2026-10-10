@@ -1,3 +1,4 @@
+import { assertResource } from "@/lib/access";
 import { NextResponse } from "next/server";
 import { rerunAssessment } from "@/lib/assess";
 import { apiError, handleError } from "@/lib/api";
@@ -9,6 +10,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/jev/rerun/[aut
   if (!actor) return apiError(401, "unauthenticated", "Pick a demo user first.");
   try {
     const { authId } = await ctx.params;
+    assertResource(actor,"authorization",authId,true);
     await rerunAssessment(authId, actorLabel(actor));
     return NextResponse.json({ ok: true });
   } catch (e) {

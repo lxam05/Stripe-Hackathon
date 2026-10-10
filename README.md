@@ -1,81 +1,76 @@
 # Balance
 
-**Virtual cards, live budgets and an AI risk analyst for UCD society committees.** HackUCD 2026 · FinTech & Quantitative Analysis (payments + fraud & risk), crossover with Everyday Frustrations ("your society's spreadsheet chaos").
+A local sandbox for UCD society spending: committee cards, post-payment treasurer reviews, member reimbursements and annual grant reports for Societies Council.
 
-Every society gets **five virtual officer cards**, one per committee officer, each with its own per-purchase and monthly limit. Events are budgets: point a card at an event and its purchases come out of that budget, within the event's dates. Every purchase is checked twice:
+## Run locally
 
-1. **In real time by deterministic rules** (event budget, card limits, blocked merchant categories, event dates, 13 scored risk signals), inside the card network's authorisation window. Typical decision: under 1 ms.
-2. **Straight after by JEV**, an LLM risk analyst called through **OpenRouter**. It compares the purchase with the society's own history, the purchaser's pattern and the event's context, then explains anything odd in plain English with evidence the treasurer can check. AI can raise suspicion but never approve, and auto-freeze needs **both** layers to agree.
-
-Sponsors and UCD top up a society's budget through **Stripe Checkout**; societies subscribe to the **€49/year Society Plan** (Stripe bonus).
-
-See [`docs/PRD.md`](docs/PRD.md) (and the [`hackathon brief`](docs/HACKATHON_BRIEF.md)) for the full product spec and [`DATA.md`](DATA.md) for data sources and assumptions.
-
----
-
-## Run it
-
-```bash
-npm install
-npm run dev        # http://localhost:3000; the synthetic dataset is generated on first load
+```sh
+npm ci
+npm run dev
 ```
 
-No keys are required. Without them, Balance runs a **simulated checkout** (it never collects card details) and the **MockAdapter** card network, and JEV falls back to clearly labelled **rules-only** assessments. To turn on the real integrations, copy `.env.example` to `.env` (untracked) and fill in what you need. `.env.local` is committed and holds only the public Supabase values, so don't put secrets there.
+Open http://localhost:3000. The project now runs from the repository root, not the old `balance/` folder. Node 24 LTS is recommended (Node 23 produces an engine warning from ESLint dependencies).
 
-| Variable | Turns on |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase project `ecoayjkduugrgdiekhvz`. Already set in the committed `.env.local` |
-| `OPENROUTER_API_KEY` (+ `JEV_MODEL`, default `anthropic/claude-haiku-5.5`) | JEV analysis on every purchase, the evaluation run |
-| `STRIPE_SECRET_KEY` (sandbox `sk_test_…` only; the app refuses live keys) | Real Stripe Checkout for top-ups and the Society Plan subscription |
-| `STRIPE_WEBHOOK_SECRET` | Signature-verified webhooks. Run `stripe listen --forward-to localhost:3000/api/webhooks/stripe` |
-| `ISSUING_MODE=stripe` | Real Stripe Issuing virtual cards and test-helper authorisations (needs Issuing enabled on the sandbox account) |
+Next loads private credentials from your ignored `.env`; see `.env.example`. Never commit secret keys. Prefer a restricted Stripe sandbox key with only the required permissions. With no Stripe key, checkout and issuing are clearly simulated. With no OpenRouter key, risk uses rules and report drafts use labelled templates.
 
-Other scripts:
-
-```bash
-npm test           # PRD §11.2 test matrix (32 ordinary / boundary / failure cases) → data/test-results.json
-npm run eval       # JEV over the labelled eval set: rules vs JEV vs combined (needs OPENROUTER_API_KEY)
-npm run eval -- openai/gpt-5-mini   # compare another OpenRouter model
-npm run seed       # regenerate the synthetic year (fixed seed)
-npm run typecheck && npm run lint
+```sh
+npm run typecheck
+npm run lint
+npm test
+npm run build
 ```
 
-### Supabase MCP (Claude Code)
+Tests use a separate disposable database and a local OpenRouter stub; they never reset your app database. A few existing failure-path tests call external APIs with deliberately invalid test credentials. The sandbox must allow local sockets for the stub. `npm run seed` explicitly resets the app demo data; normal startup uses additive migrations and preserves existing records.
 
-`.mcp.json` registers the Supabase MCP server for project `ecoayjkduugrgdiekhvz`, and `.claude/settings.json` enables it. The first time you open the repo in Claude Code, run `/mcp`, pick **supabase** and sign in with a Supabase account that's a member of the project. Ask the project owner for an invite if you don't have access.
+## Main demo
 
-## The 3-minute demo
+- Choose the Drama treasurer to view payment reviews, card controls and outstanding claims.
+- Choose Jamie (member) to submit a receipt-backed claim. Alex (auditor) has a fictional €1,000 approved claim awaiting repayment.
+- The treasurer approves/declines expenses and records repayment made externally. “Mark repaid” does not send money.
+- Choose Evelyn (senior treasurer) to edit the annual report and forecast; submit to Council.
+- Choose Council to create societies, assign required/optional leadership, review reports, record interview notes and approve grant amounts.
+- Societies without a senior treasurer use their treasurer as reporting owner.
+- Use the simulator for first-time, threshold and recurring purchase cases. Drama's legacy demo plan may need renewal before card spending.
 
-1. **Landing:** pick **Aoife Byrne, Treasurer, Drama Society**. Her 2025/26 plan has ended and €180 carried over.
-2. **Plan → Subscribe €49/year:** Stripe Checkout (`mode=subscription`). Back in-app, the plan is *Active* and Drama's five officer cards, frozen when the plan lapsed, work again (Stripe bonus: price, button, sandbox purchase, recognised in product).
-3. **Funding → Open page:** the public sponsor page. Pay **€250** as "Acme Ltd". The success page shows *confirmed* only once payment is verified, and the ledger is credited exactly once.
-4. **New event:** *Pizza Night*, €300 budget, with Cian's events-officer card switched on. His card now spends from that budget, only within the event's dates, and still within his own €500 per-purchase and €3,000 monthly limits. **Officer cards** shows all five cards, what each is spending for, and this month's spend.
-5. **Purchase simulator** (Cian's card):
-   * **Domino's €184** → approved in about 1 ms, rules score 0, JEV low risk.
-   * **Paddy Power €50** → declined at the card (blocked MCC 7995) and flagged high.
-   * **Electro World €100 at 02:14** → approved by the rules (within limits, score 40, so it goes to review). With `OPENROUTER_API_KEY` set, JEV explains why electronics at 2am doesn't fit a pizza social, and rules ≥ 40 + JEV high → **card auto-frozen**. Without a key, the rules flag it for review, labelled "AI unavailable".
-6. **Review queue:** resolve as *Misuse*. The card is cancelled, the hold released, and the incident written to the audit log. The freed slot can take a replacement card from **Officer cards**.
-7. **Evaluation:** rules vs JEV vs combined on the labelled set, per-anomaly-type catch rates, 32/32 test matrix, JEV's known limits.
+## Important behavior
 
-## How it's built
+Cards belong to committee members across events. Events are optional cost centres; their budgets and dates are advisory. Purchase/monthly thresholds trigger **review after payment**, not network declines. Active card/plan/capacity, available funds and blocked MCC policy remain hard checks.
 
-```
-Next.js 16 (App Router, TypeScript) monolith · SQLite (better-sqlite3) · Tailwind v4
-├─ src/lib/authorize.ts   sync decision engine: hard rules H1–H6, scored rules R1–R13, holds (IMMEDIATE txn)
-├─ src/lib/jev.ts         JEV: pseudonymised context, OpenRouter structured output, Zod, retry, evidence check
-├─ src/lib/assess.ts      action policy (§8.6): flags, auto-freeze, in-process job queue
-├─ src/lib/ledger.ts      append-only ledger in integer cents: funded / held / spent / available
-├─ src/lib/payments.ts    Stripe Checkout: top-ups (payment) + Society Plan (subscription), idempotent fulfilment
-├─ src/lib/cards.ts       officer cards (5 per society, event assignment, limits) + CardNetworkAdapter: StripeIssuing | Mock
-├─ src/lib/seed.ts        synthetic year + labelled anomalies, replayed through the real engine
-├─ src/lib/evaluation.ts  rules vs JEV vs combined metrics
-└─ src/app/api/…          REST API with a consistent {error:{code,message}} envelope + Stripe webhook
-```
+Recurring mandates are explicit: cardholder + merchant identity + currency + amount range + cadence + expiry. They skip routine review, not safety/risk exceptions. Misuse review never refunds or reverses a payment.
 
-**Money model.** Stripe Issuing has one Issuing balance per platform account (UCD). Per-society budgets are an internal ledger that Balance enforces at authorisation time, which is why the synchronous decision matters. Invariant (tested): `available = funded − held − spent ≥ 0` and `held = Σ pending authorisations`. A card on an event spends from that event's remaining budget; an unassigned card spends only from **unallocated** money (available minus what open events still have reserved).
+€49/year includes five card slots. A €10 extra slot is valid for the remaining plan year and expires at renewal, with no automatic renewal. Cancelled cards release slots; pending/frozen cards count. Extra-card revenue is not society funding.
 
-**AI guardrails.** temperature 0; JSON-schema output validated with Zod (one retry, then rules fallback); merchant descriptors wrapped as untrusted `<<DATA>>` and backed by a deterministic injection rule (R13); members sent as pseudonyms only; OpenRouter `provider.data_collection: "deny"`; each € amount and MCC cited in a flag is checked against the input; model, prompt version, latency, tokens and cost stored with every assessment.
+Existing remotely issued Stripe cards may still carry old hard amount limits. Saving their thresholds clears those legacy limits. Do this deliberately in the sandbox; local migration does not silently change remote cards.
+
+## Integrations
+
+Stripe uses a signature-verified endpoint at `/api/webhooks/stripe`. Webhooks are required for billing and asynchronous checkout: configure completed/async-success/failure, invoice paid/payment-failed, subscription lifecycle and Issuing events. Never substitute the success page for webhook fulfilment. Use `stripe listen --forward-to localhost:3000/api/webhooks/stripe` with the matching sandbox.
+
+This project rejects live Stripe keys. Real Issuing eligibility, funding, consent, tax/VAT registrations and institutional approval remain launch work; Checkout receipts are not proof of available Issuing funds.
+
+JEV calls OpenRouter, never a model provider directly. Risk context is pseudonymized, schema-checked, and falls back to rules. Annual report drafting sends aggregates, not receipts or personal identities, and falls back to a deterministic template.
+
+## Code map
+
+| Area | Files |
+| --- | --- |
+| Network decisions, holds and captures | `src/lib/authorize.ts`, `ledger.ts` |
+| Payment mandates and workflow states | `recurring.ts`, `workflows.ts` |
+| Role/tenant checks | `access.ts`, `session.ts` |
+| Cards and paid capacity | `cards.ts`, `payments.ts` |
+| AI risk and report drafts | `jev.ts`, `assess.ts` |
+| Schema and additive demo upgrade | `db.ts`, `demo-workflows.ts` |
+| Workflow mutations and receipts | `src/app/api/workflows/[resource]`, `api/expenses/[id]/receipt` |
+| Regression coverage | `scripts/test.ts`, `scripts/test-workflows.ts` |
+
+See [the current PRD](docs/PRD.md) for evidence, assumptions and acceptance criteria; [DATA.md](DATA.md) for synthetic data provenance.
+
+## Limitations
+
+Demo cookie identities are deliberately selectable: this is not production authentication. SQLite is local. Receipts need production malware scanning/retention controls. Approved claims are shown as liabilities but not reserved funds. Grant snapshots require human checking. Background risk jobs are in-process, and production needs durable processing plus stronger network reconciliation, webhook concurrency/ordering and capture-adjustment handling.
+
+Interview-reported UCD practices are evidence for the prototype, not verified institutional policy. No measured fraud reduction or time-saving claims are made.
 
 ## Artwork
 
-All illustrations (hero sculpture, card and event art, society icons, personas, the JEV mascot) were generated with **OpenArt** (GPT Image 2) for this project. Originals live in `art-src/` (git-ignored); `npm run art` re-exports the web-sized WebP files in `public/art/`.
+Existing artwork was generated for this project; web assets are in `public/art/`. Originals and the old local `balance/` artifacts are preserved and are not needed to run the root app.

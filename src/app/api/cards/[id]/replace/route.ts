@@ -1,3 +1,4 @@
+import { assertResource } from "@/lib/access";
 import { NextResponse } from "next/server";
 import { replaceCard } from "@/lib/cards";
 import { apiError, handleError } from "@/lib/api";
@@ -9,6 +10,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/cards/[id]/rep
   if (!canManage(actor)) return apiError(403, "forbidden", "Only the treasurer can issue cards.");
   try {
     const { id } = await ctx.params;
+    assertResource(actor,"card",id,true);
     const r = await replaceCard(id, actorLabel(actor!));
     return r.issued.ok ? NextResponse.json({ ok: true, card_id: r.cardId }) : apiError(502, "card_issue_failed", r.issued.error);
   } catch (e) {

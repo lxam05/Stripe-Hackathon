@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import Image from "next/image";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { CircleCheck, OctagonX } from "lucide-react";
 import { AutoRefresh } from "@/components/auto-refresh";
@@ -29,7 +30,8 @@ function readTests() {
 }
 
 export default async function EvalPage() {
-  await requireActor();
+  const actor=await requireActor();
+  if(actor.kind !== "admin") redirect("/dashboard");
   const e = computeEval();
   const progress = evalProgress();
   const tests = readTests();

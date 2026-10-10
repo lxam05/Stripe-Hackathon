@@ -102,6 +102,8 @@ CREATE TABLE IF NOT EXISTS authorization (
   member_id TEXT NOT NULL,
   amount_cents INTEGER NOT NULL,
   merchant_name TEXT NOT NULL,
+  merchant_key TEXT NOT NULL DEFAULT '',
+  currency TEXT NOT NULL DEFAULT 'eur',
   mcc TEXT NOT NULL,
   mcc_group TEXT NOT NULL,
   merchant_city TEXT NOT NULL DEFAULT '',
@@ -234,6 +236,80 @@ CREATE TABLE IF NOT EXISTS job (
   created_at TEXT NOT NULL,
   UNIQUE(kind, ref_id)
 );
+
+CREATE TABLE IF NOT EXISTS payment_review (
+  authorization_id TEXT PRIMARY KEY REFERENCES authorization(id),
+  status TEXT NOT NULL DEFAULT 'pending',
+  reason TEXT NOT NULL,
+  mandate_id TEXT,
+  note TEXT NOT NULL DEFAULT '',
+  reviewed_by TEXT,
+  reviewed_at TEXT
+);
+CREATE TABLE IF NOT EXISTS recurring_mandate (
+  id TEXT PRIMARY KEY,
+  society_id TEXT NOT NULL REFERENCES society(id),
+  member_id TEXT NOT NULL REFERENCES member(id),
+  merchant_key TEXT NOT NULL,
+  merchant_name TEXT NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'eur',
+  min_cents INTEGER NOT NULL,
+  max_cents INTEGER NOT NULL,
+  cadence TEXT NOT NULL,
+  starts_at TEXT NOT NULL,
+  ends_at TEXT NOT NULL,
+  last_used_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  approved_from TEXT NOT NULL REFERENCES authorization(id),
+  approved_by TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS mandate_match ON recurring_mandate(society_id, member_id, merchant_key, status);
+CREATE TABLE IF NOT EXISTS expense (
+  id TEXT PRIMARY KEY,
+  society_id TEXT NOT NULL REFERENCES society(id),
+  member_id TEXT NOT NULL REFERENCES member(id),
+  event_id TEXT REFERENCES event(id),
+  merchant TEXT NOT NULL,
+  category TEXT NOT NULL,
+  purpose TEXT NOT NULL,
+  amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
+  incurred_on TEXT NOT NULL,
+  receipt_name TEXT NOT NULL,
+  receipt_type TEXT NOT NULL,
+  receipt BLOB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'submitted',
+  note TEXT NOT NULL DEFAULT '',
+  reviewed_by TEXT,
+  payment_reference TEXT,
+  paid_at TEXT,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS expense_society ON expense(society_id, member_id, status);
+CREATE TABLE IF NOT EXISTS grant_report (
+  id TEXT PRIMARY KEY,
+  society_id TEXT NOT NULL REFERENCES society(id),
+  year INTEGER NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft',
+  evidence TEXT NOT NULL,
+  narrative TEXT NOT NULL,
+  estimate_cents INTEGER NOT NULL,
+  draft_source TEXT NOT NULL,
+  council_notes TEXT NOT NULL DEFAULT '',
+  approved_cents INTEGER,
+  created_by TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  submitted_at TEXT,
+  UNIQUE(society_id, year)
+);
+CREATE TABLE IF NOT EXISTS card_slot_purchase (
+  id TEXT PRIMARY KEY,
+  society_id TEXT NOT NULL REFERENCES society(id),
+  checkout_session_id TEXT UNIQUE,
+  expires_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending',
+  created_at TEXT NOT NULL
+);
 `;
 
 type DB = Database.Database;
@@ -247,11 +323,15 @@ function open(): DB {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 3000");
-  // Databases from before officer cards (one card per event) can't be migrated in place.
-  // The data is synthetic, so drop it; ensureSeeded() regenerates it on the next page load.
+  // Additive migrations: never silently discard a user's local ledger.
   const cardCols = db.prepare(`PRAGMA table_info(card)`).all() as { name: string }[];
-  if (cardCols.length && !cardCols.some((c) => c.name === "monthly_limit_cents")) dropAll(db);
+  if (cardCols.length && !cardCols.some((c) => c.name === "monthly_limit_cents")) {
+    db.exec(`ALTER TABLE card ADD COLUMN monthly_limit_cents INTEGER NOT NULL DEFAULT 300000`);
+  }
   db.exec(SCHEMA);
+  const authCols = db.prepare(`PRAGMA table_info(authorization)`).all() as { name: string }[];
+  if (!authCols.some((c) => c.name === "merchant_key")) db.exec(`ALTER TABLE authorization ADD COLUMN merchant_key TEXT NOT NULL DEFAULT ''`);
+  if (!authCols.some((c) => c.name === "currency")) db.exec(`ALTER TABLE authorization ADD COLUMN currency TEXT NOT NULL DEFAULT 'eur'`);
   return db;
 }
 

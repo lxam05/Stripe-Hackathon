@@ -83,13 +83,13 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             )}
             {editable && (
               <p className="mt-3 text-xs text-ink-3">
-                A card spends for one event at a time. Manage limits on <Link href="/cards" className="underline hover:text-ink">Officer cards</Link>.
+                A card spends for one event at a time. Manage review thresholds on <Link href="/cards" className="underline hover:text-ink">Officer cards</Link>.
               </p>
             )}
           </Panel>
           <Panel>
             <dl className="grid grid-cols-2 gap-y-3 text-sm">
-              <dt className="text-ink-3">Spending window</dt>
+              <dt className="text-ink-3">Suggested spending window</dt>
               <dd className="text-right tabular">
                 {fmtDate(addDays(e.start_date, -14))} → {fmtDate(addDays(e.end_date, 3))}
               </dd>

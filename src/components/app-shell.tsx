@@ -2,7 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { env, jevEnabled, stripeEnabled } from "@/lib/env";
-import { openFlagCount } from "@/lib/queries";
+import { listReviews } from "@/lib/workflows";
 import { ROLE_LABEL } from "@/lib/roles";
 import type { Actor } from "@/lib/session";
 import { Logo } from "./logo";
@@ -10,27 +10,30 @@ import { NavLinks, type NavItem } from "./nav-links";
 import { SwitchUser } from "./switch-user";
 
 export function AppShell({ actor, children }: { actor: Actor; children: ReactNode }) {
-  const flags = openFlagCount(actor.kind === "member" ? actor.societyId : undefined);
+  const flags = listReviews(actor).filter(r => ["pending","receipt_requested"].includes(r.status)).length;
   const main: NavItem[] =
     actor.kind === "member"
       ? [
           { href: "/dashboard", label: "Overview", icon: "dashboard" },
           { href: "/cards", label: "Officer cards", icon: "cards" },
-          { href: "/events", label: "Events", icon: "events" },
-          { href: "/review", label: "Review queue", icon: "review", badge: flags },
+          { href: "/expenses", label: "Expenses", icon: "transactions" },
+          { href: "/reports", label: "Grant report", icon: "admin" },
+          { href: "/members", label: "Members", icon: "admin" },
+          { href: "/events", label: "Events · cost centres", icon: "events" },
+          { href: "/review", label: "Payment reviews", icon: "review", badge: flags },
           { href: "/transactions", label: "Transactions", icon: "transactions" },
           { href: "/funding", label: "Funding", icon: "funding" },
           { href: "/plan", label: "Plan", icon: "plan" },
         ]
       : [
-          { href: "/admin", label: "Societies Office", icon: "admin" },
-          { href: "/review", label: "Review queue", icon: "review", badge: flags },
+          { href: "/admin", label: "Societies Council", icon: "admin" },
+          { href: "/reports", label: "Grant reviews", icon: "admin" },
+          { href: "/review", label: "Payment reviews", icon: "review", badge: flags },
           { href: "/transactions", label: "Transactions", icon: "transactions" },
         ];
   const demo: NavItem[] = [
     { href: "/simulator", label: "Purchase simulator", icon: "simulator" },
-    { href: "/eval", label: "Evaluation", icon: "eval" },
-    ...(actor.kind === "member" ? [{ href: "/admin", label: "Societies Office", icon: "admin" } as NavItem] : []),
+    ...(actor.kind === "admin" ? [{ href: "/eval", label: "Evaluation", icon: "eval" } as NavItem] : []),
   ];
 
   return (
@@ -93,7 +96,7 @@ function ActorChip({ actor }: { actor: Actor }) {
       <div className="min-w-0 text-sm leading-tight">
         <div className="truncate font-medium text-ink">{actor.name}</div>
         <div className="truncate text-xs text-ink-3">
-          {actor.kind === "member" ? `${ROLE_LABEL[actor.role]} · ${actor.societyName.replace(/^UCD /, "")}` : "UCD Societies Office"}
+          {actor.kind === "member" ? `${ROLE_LABEL[actor.role]} · ${actor.societyName.replace(/^UCD /, "")}` : "UCD Societies Council"}
         </div>
       </div>
     </div>

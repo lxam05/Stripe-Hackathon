@@ -21,7 +21,10 @@ export default async function MockCheckout({ params }: PageProps<"/checkout/mock
   let amount: number;
   let sub = "";
   let cancelHref: string;
-  if (session.startsWith("mock_plan_")) {
+  if (session.startsWith("mock_slot_")) {
+    const slot=db.prepare(`SELECT p.*,s.name FROM card_slot_purchase p JOIN society s ON s.id=p.society_id WHERE checkout_session_id=?`).get(session) as {name:string;expires_at:string}|undefined;
+    if(!slot)notFound(); title=`Extra card slot · ${slot.name}`;amount=1000;sub=`Until ${slot.expires_at.slice(0,10)} · no automatic renewal`;cancelHref="/plan?canceled=1";
+  } else if (session.startsWith("mock_plan_")) {
     const soc = db.prepare(`SELECT name FROM society WHERE id=?`).get(session.slice(10)) as { name: string } | undefined;
     if (!soc) notFound();
     title = `Balance ${SOCIETY_PLAN.name} · ${soc.name}`;

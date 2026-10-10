@@ -1,4 +1,5 @@
 import { getDb, resetDb } from "./db";
+import { seedWorkflowExamples } from "./demo-workflows";
 import { captureAuthorization, decideAuthorization } from "./authorize";
 import { assessAuthorization } from "./assess";
 import { postEntry, societyBalances } from "./ledger";
@@ -649,6 +650,7 @@ export async function seed(opts: { log?: (s: string) => void } = {}): Promise<Se
     evalSet: evalCount,
     flagsOpen: (db.prepare(`SELECT COUNT(*) n FROM flag WHERE status='open'`).get() as { n: number }).n,
   };
+  seedWorkflowExamples();
   log(JSON.stringify(summary));
   return summary;
 }

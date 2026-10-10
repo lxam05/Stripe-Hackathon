@@ -99,8 +99,8 @@ export default async function TransactionPage({ params }: PageProps<"/transactio
                 {t.decline_reason}
               </Notice>
             ) : (
-              <Notice tone="ok" title="Approved within budget and policy">
-                Hard rules passed. A hold of {fmtEur(t.amount_cents)} was placed on the event budget.
+              <Notice tone="ok" title="Authorised by the card network">
+                Hard rules passed. A hold of {fmtEur(t.amount_cents)} was placed against society funds. Treasurer review happens separately after payment.
               </Notice>
             )}
             <ScoreMeter score={t.rules_score} />
@@ -282,12 +282,12 @@ function ScoreMeter({ score }: { score: number }) {
         <div className="absolute inset-y-0 w-px bg-ink-3/50" style={{ left: `${SCORE_DECLINE}%` }} />
       </div>
       <div className="relative mt-1 h-4 text-[11px] text-ink-3">
-        <span className="absolute left-0">0 approve</span>
+        <span className="absolute left-0">0 low risk</span>
         <span className="absolute -translate-x-1/2" style={{ left: `${SCORE_FLAG}%` }}>
           {SCORE_FLAG} flag
         </span>
         <span className="absolute -translate-x-1/2" style={{ left: `${SCORE_DECLINE}%` }}>
-          {SCORE_DECLINE} decline
+          {SCORE_DECLINE} high risk
         </span>
       </div>
     </div>

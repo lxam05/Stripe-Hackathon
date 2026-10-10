@@ -20,7 +20,7 @@ async function main() {
   const { seed } = await import("../src/lib/seed");
   const { getDb } = await import("../src/lib/db");
   const { env } = await import("../src/lib/env");
-  const { decideAuthorization, captureAuthorization } = await import("../src/lib/authorize");
+  const { decideAuthorization, captureAuthorization, releaseAuthorization } = await import("../src/lib/authorize");
   const { assessAuthorization } = await import("../src/lib/assess");
   const { createEvent } = await import("../src/lib/events");
   const { assignCard, createOfficerCard, setCardStatus, updateCardLimits } = await import("../src/lib/cards");
@@ -132,21 +132,23 @@ async function main() {
   check("G1", "Ordinary", "€20 on an unassigned officer card", "Approved as general spending (no event)", `${g1.approved ? "approved" : "declined"}, event ${g1row.event_id ?? "none"}`, g1.approved && g1row.event_id === null);
   const unallocated = societyBalances("soc_drama").available - committedToOpenEvents("soc_drama");
   const g2 = decideAuthorization({ cardId: aoife, amountCents: unallocated + 1, merchantName: "STAGELIGHT HIRE LTD", mcc: "7394", merchantCountry: "IE", at: at("10:30") });
-  check("G2", "Boundary", "Unallocated money + €0.01 on an unassigned card", "Declined (H3): open events' money is reserved", `${g2.declineCode}`, !g2.approved && g2.declineCode === "insufficient_budget");
+  check("G2", "Boundary", "Unallocated money + €0.01 on an unassigned card", "Approved: event budgets are advisory", `${g2.declineCode}`, g2.approved);
 
-  // B3: exactly at the per-purchase cap (Saoirse's card, cap lowered to €50, on a fresh event).
+  releaseAuthorization(g2.authorizationId!);
+
+  // B3: exactly at the per-purchase threshold (Saoirse's card, cap lowered to €50, on a fresh event).
   const saoirse = "card_drama_3";
   await updateCardLimits(saoirse, 5000, 9000, "test");
   createEvent({ societyId: "soc_drama", name: "Cap test", type: "other", startDate: eventDate, endDate: eventDate, expectedAttendees: 10, budgetCents: 10000, cardIds: [saoirse] }, "test");
   const b3 = decideAuthorization({ cardId: saoirse, amountCents: 5000, merchantName: "COSTUME WORKSHOP DUBLIN", mcc: "5699", merchantCountry: "IE", at: at("14:00") });
   check("B3", "Boundary", "Amount exactly at the per-purchase cap", "Approved; R4 fires", `${b3.approved ? "approved" : "declined"}, R4 ${has(b3.signals, "R4")}`, b3.approved && has(b3.signals, "R4"));
   const b3b = decideAuthorization({ cardId: saoirse, amountCents: 5001, merchantName: "COSTUME WORKSHOP DUBLIN", mcc: "5699", merchantCountry: "IE", at: at("14:30") });
-  check("B3b", "Boundary", "Cap + €0.01", "Declined by card spending control", `${b3b.declineCode}`, !b3b.approved && b3b.declineCode === "spending_controls");
+  check("B3b", "Boundary", "Cap + €0.01", "Approved with H5 review signal", `${b3b.declineCode}`, b3b.approved && has(b3b.signals,"H5"));
 
   // B9: the card's monthly limit (€90): €50 + €40 reaches it exactly, then one cent more.
   const b9a = decideAuthorization({ cardId: saoirse, amountCents: 4000, merchantName: "SNAP PRINTING DUBLIN 2", mcc: "2741", merchantCountry: "IE", at: at("15:10") });
   const b9b = decideAuthorization({ cardId: saoirse, amountCents: 1, merchantName: "SNAP PRINTING DUBLIN 2", mcc: "2741", merchantCountry: "IE", at: at("15:20") });
-  check("B9", "Boundary", "Monthly card limit exactly reached, then + €0.01", "Approved, then declined (H6)", `${b9a.approved ? "approved" : "declined"}, then ${b9b.declineCode} ${has(b9b.signals, "H6") ? "(H6)" : ""}`, b9a.approved && !b9b.approved && has(b9b.signals, "H6"));
+  check("B9", "Boundary", "Monthly card limit exactly reached, then + €0.01", "Both approved; H6 triggers review", `${b9a.approved ? "approved" : "declined"}, then ${b9b.declineCode} ${has(b9b.signals, "H6") ? "(H6)" : ""}`, b9a.approved && b9b.approved && has(b9b.signals, "H6"));
 
   // B8: five officer cards per society.
   let b8 = "accepted";
@@ -163,7 +165,8 @@ async function main() {
   decideAuthorization({ cardId: darragh, amountCents: 4000, merchantName: "COSTUME WORKSHOP DUBLIN", mcc: "5699", merchantCountry: "IE", at: at("14:45") });
   const rem = eventRemaining(budEv.eventId, 10000).remaining; // €60 left
   const b2 = decideAuthorization({ cardId: darragh, amountCents: rem + 1, merchantName: "STAGELIGHT HIRE LTD", mcc: "7394", merchantCountry: "IE", at: at("15:00") });
-  check("B2", "Boundary", "Remaining budget + €0.01", "Declined (H3)", `${b2.declineCode}`, !b2.approved && b2.declineCode === "insufficient_budget");
+  check("B2", "Boundary", "Remaining budget + €0.01", "Approved with E1 review signal", `${b2.declineCode}`, b2.approved && has(b2.signals,"E1"));
+  releaseAuthorization(b2.authorizationId!);
   const b1 = decideAuthorization({ cardId: darragh, amountCents: rem, merchantName: "STAGELIGHT HIRE LTD", mcc: "7394", merchantCountry: "IE", at: at("15:30") });
   const remAfter = eventRemaining(budEv.eventId, 10000).remaining;
   check("B1", "Boundary", "Amount exactly equal to remaining budget", "Approved; remaining → €0.00", `${b1.approved ? "approved" : "declined"}, remaining €${(remAfter / 100).toFixed(2)}`, b1.approved && remAfter === 0);
@@ -173,7 +176,7 @@ async function main() {
   createEvent({ societyId: "soc_drama", name: "Window test", type: "social", startDate: today, endDate: today, expectedAttendees: 10, budgetCents: 20000, cardIds: [orla] }, "test");
   const inWin = decideAuthorization({ cardId: orla, amountCents: 2000, merchantName: "FREENOW", mcc: "4121", merchantCountry: "IE", at: dublinToIso(addDays(today, 3), "23:59") });
   const outWin = decideAuthorization({ cardId: orla, amountCents: 2000, merchantName: "FREENOW", mcc: "4121", merchantCountry: "IE", at: dublinToIso(addDays(today, 4), "00:01") });
-  check("B6", "Boundary", "End + 3 days 23:59 vs end + 4 days", "Approved vs declined (H2)", `${inWin.approved ? "approved" : "declined"} vs ${outWin.declineCode}`, inWin.approved && !outWin.approved && outWin.declineCode === "outside_event_window");
+  check("B6", "Boundary", "End + 3 days 23:59 vs end + 4 days", "Both approved; H2 triggers review", `${inWin.approved ? "approved" : "declined"} vs ${outWin.declineCode}`, inWin.approved && outWin.approved && has(outWin.signals,"H2"));
 
   // B4: cold start. A brand-new category for the society uses the all-society baseline.
   const b4 = decideAuthorization({ cardId: orla, amountCents: 15000, merchantName: "GREAT OUTDOORS", mcc: "5941", merchantCountry: "IE", at: dublinToIso(today, "12:00") });
@@ -189,12 +192,16 @@ async function main() {
 
   // F9: concurrent authorisations that together exceed the budget.
   createEvent({ societyId: "soc_drama", name: "Race test", type: "social", startDate: eventDate, endDate: eventDate, expectedAttendees: 10, budgetCents: 10000, cardIds: [darragh] }, "test");
+  const { postEntry }=await import("../src/lib/ledger");
+  const raceReserve=societyBalances("soc_drama").available-10000;
+  postEntry({societyId:"soc_drama",type:"transfer_out",amountCents:raceReserve,refType:"test",refId:"race",at:new Date().toISOString()});
   const race = await Promise.all(
     [0, 1].map((i) => Promise.resolve().then(() => decideAuthorization({ cardId: darragh, amountCents: 6000, merchantName: `APACHE PIZZA ${i}`, mcc: "5814", merchantCountry: "IE", at: at("17:0" + i) }))),
   );
   const approvedCount = race.filter((r) => r.approved).length;
   check("F9", "Failure", "Two concurrent €60 auths on a €100 budget", "One approved, one declined", `${approvedCount} approved`, approvedCount === 1);
 
+  postEntry({societyId:"soc_drama",type:"topup",amountCents:raceReserve+100000,refType:"test",refId:"restore",at:new Date().toISOString()});
   // F1: OpenRouter unreachable → rules-only, decision unaffected.
   env.openRouterKey = "sk-or-invalid-test-key";
   env.jevTimeoutMs = 3000;
@@ -234,7 +241,7 @@ async function main() {
       res.end(JSON.stringify({ id: "gen-test", object: "chat.completion", created: 0, model: "stub/jev", choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content } }], usage: { prompt_tokens: 1800, completion_tokens: 160, total_tokens: 1960, cost: 0.00042 } }));
     });
   });
-  await new Promise<void>((r) => stub.listen(0, r));
+  await new Promise<void>((r) => stub.listen(0, "127.0.0.1", r));
   env.openRouterBaseUrl = `http://127.0.0.1:${(stub.address() as { port: number }).port}`;
   env.openRouterKey = "sk-or-stub";
 
@@ -322,6 +329,9 @@ async function main() {
   env.stripeSecretKey = "";
   const f10card = db.prepare(`SELECT status, error FROM card WHERE id=?`).get(f10.cardId) as { status: string; error: string };
   check("F10", "Failure", "Stripe API error issuing an officer card", "Card saved as pending with a clear error; retry possible", `card ${f10card.status}: ${(f10card.error ?? "").slice(0, 50)}`, !f10.issued.ok && f10card.status === "pending" && !!f10card.error);
+
+  const { testWorkflows }=await import("./test-workflows");
+  await testWorkflows(check);
 
   // Invariant: the ledger reconciles for every society.
   const rec = reconcileAll();

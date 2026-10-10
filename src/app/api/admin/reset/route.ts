@@ -5,7 +5,7 @@ import { getActor } from "@/lib/session";
 
 /** POST — regenerate the synthetic dataset (demo reset). */
 export async function POST() {
-  if (!(await getActor())) return apiError(401, "unauthenticated", "Pick a demo user first.");
+  if ((await getActor())?.kind !== "admin") return apiError(403, "forbidden", "Only Council can reset this demo.");
   try {
     const summary = await seed();
     const res = NextResponse.json({ ok: true, summary });

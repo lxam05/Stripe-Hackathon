@@ -39,8 +39,14 @@ The 2025/26 purchases are split **70% history / 30% evaluation**, *stratified by
 
 * Typical Irish student-event prices: e.g. pizza ≈ €2–4 per head, coach hire €400–500/day, hostel €25–40 per person per night. These are our estimates for plausibility, not CSO statistics.
 * Alcohol (MCC 5813/5921) is **review**, not blocked. UCD/SU policy on society alcohol spend is unverified, so it's configurable by the Societies Office.
-* Five officer cards per society, pointed at event budgets, match how committees actually spend (assumption A5 in the PRD).
-* Card limits in the synthetic data are sized from each officer's own purchases: the per-purchase cap covers their largest normal purchase, and the monthly limit leaves 20% headroom over their busiest month. Large one-off bills (hostels, ball dinners) go on the treasurer's card.
+* Five included committee card slots and €10 extra slots are prototype pricing decisions, not a verified description of UCD card practice. Events are optional cost centres.
+* Legacy card amount fields now represent soft review thresholds. They are not hard spending caps. Historical values are sized from synthetic purchases and are not official policy.
+
+## Workflow examples (v2)
+
+The additive demo upgrade adds a fictional ordinary member, auditor and senior treasurer to Drama; an emergency-refreshment claim; a €1,000 approved claim awaiting external repayment; and an editable annual report backed by the ledger. Receipt fixtures are explicitly labelled synthetic. Historic payment reviews are marked imported history, not fabricated treasurer approvals.
+
+The emergency substitution and temporary €1,000 personal cash burden are inspired by interview context supplied by the product owner. The records, people and amounts shown in this fictional society are demonstration data, not the real Netsoc transaction or an official UCD case file. See PRD v2 for the evidence/assumption distinction.
 
 ## Baselines for claims
 

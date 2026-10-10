@@ -57,11 +57,6 @@ const mockNetwork: CardNetwork = {
   async setLimits() {},
 };
 
-const spendingLimits = (perAuthCapCents: number, monthlyLimitCents: number) => [
-  { amount: monthlyLimitCents, interval: "monthly" as const },
-  { amount: perAuthCapCents, interval: "per_authorization" as const },
-];
-
 const stripeNetwork: CardNetwork = {
   name: "stripe",
   async ensureCardholder(m) {
@@ -91,7 +86,6 @@ const stripeNetwork: CardNetwork = {
       type: "virtual",
       status: "active",
       spending_controls: {
-        spending_limits: spendingLimits(p.perAuthCapCents, p.monthlyLimitCents),
         blocked_categories: blocked,
       },
       metadata: { society_id: p.societyId, member_id: p.memberId, role: p.role, balance_env: "sandbox" },
@@ -102,10 +96,10 @@ const stripeNetwork: CardNetwork = {
     if (!stripeCardId) return;
     await getStripe().issuing.cards.update(stripeCardId, { status });
   },
-  async setLimits(stripeCardId, perAuthCapCents, monthlyLimitCents) {
+  async setLimits(stripeCardId) {
     if (!stripeCardId) return;
     await getStripe().issuing.cards.update(stripeCardId, {
-      spending_controls: { spending_limits: spendingLimits(perAuthCapCents, monthlyLimitCents) },
+      spending_controls: { spending_limits: [] },
     });
   },
 };
@@ -135,6 +129,16 @@ export function liveCardCount(societyId: string) {
   return (getDb().prepare(`SELECT COUNT(*) n FROM card WHERE society_id=? AND status != 'canceled'`).get(societyId) as { n: number }).n;
 }
 
+export function cardCapacity(societyId: string, at = nowIso()) {
+  const n = getDb().prepare(`SELECT COUNT(*) n FROM card_slot_purchase WHERE society_id=? AND status='paid' AND expires_at>?`).get(societyId,at) as { n:number };
+  return CARDS_PER_SOCIETY+n.n;
+}
+
+export function cardHasSlot(cardId:string,societyId:string) {
+  const live=getDb().prepare(`SELECT id FROM card WHERE society_id=? AND status!='canceled' ORDER BY created_at,id`).all(societyId) as {id:string}[];
+  return live.slice(0,cardCapacity(societyId)).some(c=>c.id===cardId);
+}
+
 export function validateLimits(perAuthCapCents: number, monthlyLimitCents: number) {
   if (!Number.isInteger(perAuthCapCents) || perAuthCapCents < 100) throw new UserError("validation", "The per-purchase cap must be at least €1.");
   if (!Number.isInteger(monthlyLimitCents) || monthlyLimitCents < 100) throw new UserError("validation", "The monthly limit must be at least €1.");
@@ -161,6 +165,7 @@ export function cardMonthSpend(cardId: string, at: string) {
 export async function issueCard(cardId: string, actor: string) {
   const db = getDb();
   const pending = getCard(cardId);
+  if (pending.status !== "pending") throw new UserError("conflict", "Only a pending card can be issued.", 409);
   const member = db.prepare(`SELECT * FROM member WHERE id=?`).get(pending.member_id) as MemberRow;
   const net = cardNetwork();
   try {
@@ -211,12 +216,13 @@ export async function createOfficerCard(input: NewCardInput, actor: string) {
     | { id: string; name: string; role: string }
     | undefined;
   if (!member) throw new UserError("validation", "Pick a cardholder from your committee.");
+  if (["member","senior_treasurer"].includes(member.role)) throw new UserError("validation", "Cards are issued to committee members; ordinary members can submit expenses.");
   if (input.eventId) assertOpenEvent(input.eventId, input.societyId);
 
   const cardId = newId("card");
   db.transaction(() => {
-    if (liveCardCount(input.societyId) >= CARDS_PER_SOCIETY) {
-      throw new UserError("card_limit", `The Society Plan includes ${CARDS_PER_SOCIETY} officer cards. Cancel one to free a slot.`);
+    if (liveCardCount(input.societyId) >= cardCapacity(input.societyId)) {
+      throw new UserError("card_limit", `Your card slots are full. Add a slot for €10 for the remaining plan year, or cancel a card.`);
     }
     const existing = db.prepare(`SELECT id FROM card WHERE member_id=? AND status != 'canceled'`).get(member.id);
     if (existing) throw new UserError("card_exists", `${member.name} already has a card. Each officer holds one.`);
@@ -239,6 +245,7 @@ function assertOpenEvent(eventId: string, societyId: string) {
 /** Point a card at an open event (its purchases come out of that budget), or back to general spending. */
 export function assignCard(cardId: string, eventId: string | null, actor: string) {
   const card = getCard(cardId);
+  if (card.status === "pending") throw new UserError("validation", "Finish issuing or cancel this pending card first.");
   if (card.status === "canceled") throw new UserError("validation", "This card is cancelled.");
   if (eventId) assertOpenEvent(eventId, card.society_id);
   getDb().prepare(`UPDATE card SET event_id=? WHERE id=?`).run(eventId, cardId);
@@ -279,6 +286,8 @@ export async function setCardStatus(cardId: string, status: Exclude<CardStatus, 
   if (!card) throw new UserError("not_found", "Card not found", 404);
   if (card.status === "canceled") throw new UserError("card_canceled", "This card is cancelled and can't be changed.");
   if (status === "active") {
+    if(card.status === "pending") throw new UserError("validation","Issue the pending card before activating it.");
+    if (!cardHasSlot(cardId,card.society_id)) throw new UserError("card_limit","This extra card slot has expired. Buy a slot or cancel another card.");
     const soc = db.prepare(`SELECT plan_status FROM society WHERE id=?`).get(card.society_id) as { plan_status: string };
     if (soc.plan_status !== "active") throw new UserError("plan_required", "Renew the Society Plan to use your officer cards again.", 402);
   }
@@ -300,6 +309,6 @@ export async function reactivatePlanCards(societyId: string, actor: string) {
   const cards = getDb()
     .prepare(`SELECT id FROM card WHERE society_id=? AND status='inactive' AND status_reason=?`)
     .all(societyId, PLAN_LAPSED_REASON) as { id: string }[];
-  for (const c of cards) await setCardStatus(c.id, "active", "Society Plan renewed", actor);
+  for (const c of cards) if(cardHasSlot(c.id,societyId)) await setCardStatus(c.id, "active", "Society Plan renewed", actor);
   return cards.length;
 }

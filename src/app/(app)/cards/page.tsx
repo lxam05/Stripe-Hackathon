@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { cardCapacity } from "@/lib/cards";
 import { CreditCard, Lock, Plus } from "lucide-react";
 import { CardControls, IssueCardForm, MonthBar, ReplaceCardButton } from "@/components/card-controls";
 import { CardStatusPill, Notice, PageHeader, Panel, SectionTitle, button } from "@/components/ui";
@@ -6,19 +7,20 @@ import { VirtualCard, roleArt } from "@/components/virtual-card";
 import { requireMember } from "@/lib/guard";
 import { fmtDate, fmtEur } from "@/lib/money";
 import { getSociety, listCards, listEvents, listMembers } from "@/lib/queries";
-import { CARDS_PER_SOCIETY, ROLE_LABEL } from "@/lib/roles";
+import { ROLE_LABEL } from "@/lib/roles";
 
 export const metadata = { title: "Officer cards" };
 
 export default async function CardsPage() {
   const actor = await requireMember();
   const soc = getSociety(actor.societyId)!;
+  const CARDS_PER_SOCIETY = cardCapacity(soc.id);
   const isTreasurer = actor.role === "treasurer";
   const planActive = soc.plan_status === "active";
   const all = listCards({ societyId: soc.id, includeCanceled: true });
   const live = all.filter((c) => c.status !== "canceled");
   const members = listMembers(soc.id);
-  const withoutCard = members.filter((m) => !live.some((c) => c.member_id === m.id)).map((m) => ({ id: m.id, name: m.name, role: m.role }));
+  const withoutCard = members.filter((m) => !["member","senior_treasurer"].includes(m.role)).filter((m) => !live.some((c) => c.member_id === m.id)).map((m) => ({ id: m.id, name: m.name, role: m.role }));
   // Cancelled cards whose officer hasn't been given a new one yet.
   const replaceable = all.filter((c) => c.status === "canceled" && withoutCard.some((m) => m.id === c.member_id)).filter((c, i, xs) => xs.findIndex((x) => x.member_id === c.member_id) === i);
   const events = listEvents(soc.id, "open").map((e) => ({ id: e.id, name: e.name }));
@@ -36,8 +38,7 @@ export default async function CardsPage() {
           </Link>
         }
       >
-        Your Society Plan includes {CARDS_PER_SOCIETY} virtual cards, one per committee officer. Point a card at an event and its purchases come out of that
-        event&rsquo;s budget. Otherwise it spends from unallocated money. Every card has its own per-purchase and monthly limit.
+        Your society has {CARDS_PER_SOCIETY} card slots. Cards belong to committee members across events. Optional event tags organise spending. Purchase and monthly thresholds trigger review after payment; they do not block spending.
       </PageHeader>
 
       {!planActive && (
@@ -78,7 +79,7 @@ export default async function CardsPage() {
               {c.status === "pending" && c.error && <Notice tone="warn">{c.error}</Notice>}
               <div>
                 <MonthBar spent={c.month_spent} limit={c.monthly_limit_cents} />
-                <div className="mt-1 text-xs text-ink-3 tabular">Up to {fmtEur(c.per_auth_cap_cents)} per purchase</div>
+                <div className="mt-1 text-xs text-ink-3 tabular">Review above {fmtEur(c.per_auth_cap_cents)} per purchase</div>
               </div>
               {onEvent && (
                 <Link href={`/events/${c.event_id}`} className="-mt-1 text-sm text-ink-2 hover:text-ink">

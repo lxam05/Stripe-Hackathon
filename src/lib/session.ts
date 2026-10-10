@@ -27,7 +27,7 @@ export async function getActor(): Promise<Actor | null> {
   const jar = await cookies();
   const v = jar.get(ACTOR_COOKIE)?.value;
   if (!v) return null;
-  if (v === "admin") return { kind: "admin", id: "admin", name: "Societies Office (demo)" };
+  if (v === "admin") return { kind: "admin", id: "admin", name: "Societies Council (demo)" };
   const row = getDb()
     .prepare(
       `SELECT m.id, m.name, m.role, s.id sid, s.name sname, s.slug, s.icon FROM member m JOIN society s ON s.id=m.society_id WHERE m.id=?`,
@@ -48,6 +48,6 @@ export async function getActor(): Promise<Actor | null> {
   };
 }
 
-export const canManage = (a: Actor | null) => a?.kind === "admin" || (a?.kind === "member" && a.role === "treasurer");
+export const canManage = (a: Actor | null) => a?.kind === "member" && a.role === "treasurer";
 
 export const actorLabel = (a: Actor) => (a.kind === "admin" ? "admin" : a.id);

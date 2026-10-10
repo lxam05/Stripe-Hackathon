@@ -5,6 +5,7 @@ import { Logo } from "@/components/logo";
 import { RolePicker, type Persona } from "@/components/role-picker";
 import { ensureSeeded } from "@/lib/bootstrap";
 import { listMembers } from "@/lib/queries";
+import { ROLE_LABEL } from "@/lib/roles";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +17,11 @@ export default async function Home() {
   const personas: Persona[] = [
     { actor: aoife.id, name: aoife.name, role: "Treasurer", detail: aoife.society_name, image: "/art/persona-treasurer.webp", recommended: true },
     { actor: cian.id, name: cian.name, role: "Events officer · cardholder", detail: cian.society_name, image: "/art/persona-officer.webp" },
-    { actor: "admin", name: "Societies Office", role: "UCD admin", detail: "All societies, policy & flags", image: "/art/persona-admin.webp" },
+    { actor: "admin", name: "Societies Council", role: "Council admin", detail: "Onboarding, reports & grant interviews", image: "/art/persona-admin.webp" },
   ];
   const others: Persona[] = members
-    .filter((m) => m.role === "treasurer" && m.id !== aoife.id)
-    .map((m) => ({ actor: m.id, name: m.name, role: "Treasurer", detail: m.society_name, image: m.society_icon }));
+    .filter((m) => ![aoife.id,cian.id].includes(m.id))
+    .map((m) => ({ actor: m.id, name: m.name, role: ROLE_LABEL[m.role], detail: `${ROLE_LABEL[m.role]} · ${m.society_name}`, image: m.society_icon }));
 
   return (
     <div className="min-h-screen">
@@ -48,9 +49,7 @@ export default async function Home() {
               <em className="text-stone-2">kept in balance.</em>
             </h1>
             <p className="mt-5 max-w-lg text-[17px] leading-relaxed text-ink-2">
-              Every committee officer gets a virtual card, and every event gets a budget the cards spend from. Every purchase is checked twice: by hard rules in
-              real time, then by <b className="font-semibold text-ink">JEV</b>, an AI analyst that explains anything odd in
-              plain English. No more fronting costs, chasing receipts or a spreadsheet nobody trusts.
+              Committee cards reduce out-of-pocket costs. Treasurers review new spending after payment, members track reimbursements, and senior treasurers prepare the annual grant report. <b className="font-semibold text-ink">JEV</b> adds evidence-backed risk analysis without delaying ordinary payments.
             </p>
           </div>
           <div className="relative mt-8 aspect-[16/9] overflow-hidden rounded-3xl lg:hidden">
@@ -69,9 +68,9 @@ export default async function Home() {
 
       <section className="mx-auto grid max-w-[1180px] gap-4 px-5 pb-16 sm:grid-cols-3 sm:px-8">
         {[
-          { Icon: CreditCard, title: "Five officer cards", body: "Each society gets five virtual cards for its officers. Point the events officer’s card at “Pizza Night, €300” and it spends from that budget, within the event’s dates." },
-          { Icon: ShieldCheck, title: "Rules decide, instantly", body: "Budgets, card limits, blocked merchants, event dates and thirteen risk signals are checked inside the card network’s authorisation window." },
-          { Icon: Sparkles, title: "JEV explains", body: "An AI analyst (via OpenRouter) compares each purchase with the society’s history and flags what doesn’t fit, with evidence you can check." },
+          { Icon: CreditCard, title: "Five officer cards", body: "€49/year includes five committee cards. Extra slots cost €10 for the remaining plan year. Events are optional cost centres." },
+          { Icon: ShieldCheck, title: "Spend, then review", body: "New purchases and threshold exceptions go to the treasurer. Approved recurring payments skip routine review. Any member can submit an expense." },
+          { Icon: Sparkles, title: "Evidence for Council", body: "The senior treasurer—or treasurer if none is assigned—turns spending evidence into an editable report and next-year grant estimate." },
         ].map(({ Icon, title, body }) => (
           <div key={title} className="rounded-2xl border border-line bg-surface/80 p-5">
             <Icon className="h-5 w-5 text-coral" aria-hidden />

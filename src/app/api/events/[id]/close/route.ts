@@ -1,3 +1,4 @@
+import { assertResource } from "@/lib/access";
 import { NextResponse } from "next/server";
 import { closeEvent } from "@/lib/events";
 import { apiError, handleError } from "@/lib/api";
@@ -8,6 +9,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/events/[id]/cl
   if (!canManage(actor)) return apiError(403, "forbidden", "Only the treasurer can close events.");
   try {
     const { id } = await ctx.params;
+    assertResource(actor,"event",id,true);
     await closeEvent(id, actorLabel(actor!));
     return NextResponse.json({ ok: true });
   } catch (e) {

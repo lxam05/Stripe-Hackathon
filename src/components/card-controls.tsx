@@ -55,6 +55,7 @@ export function CardControls({
         <button className={button("primary")} disabled={pending} onClick={() => patch("retry", { action: "retry" })}>
           {icon("retry", RefreshCw)} Retry issuing
         </button>
+        <button className={button("ghost")} disabled={pending} onClick={()=>patch("cancel",{action:"cancel"})}>Cancel pending card</button>
         {error && <Notice tone="bad">{error}</Notice>}
       </div>
     );
@@ -73,7 +74,7 @@ export function CardControls({
           disabled={pending}
           onChange={(e) => patch("assign", { action: "assign", event_id: e.target.value || null })}
         >
-          <option value="">General spending (unallocated money)</option>
+          <option value="">General society spending</option>
           {events.map((e) => (
             <option key={e.id} value={e.id}>
               {e.name}
@@ -92,13 +93,13 @@ export function CardControls({
         >
           <div>
             <label htmlFor={`cap-${card.id}`} className={label}>
-              Per purchase (€)
+              Purchase review threshold (€)
             </label>
             <input id={`cap-${card.id}`} inputMode="decimal" className={cx(field, "tabular")} value={cap} onChange={(e) => setCap(e.target.value)} />
           </div>
           <div>
             <label htmlFor={`mon-${card.id}`} className={label}>
-              Per month (€)
+              Monthly review threshold (€)
             </label>
             <input id={`mon-${card.id}`} inputMode="decimal" className={cx(field, "tabular")} value={monthly} onChange={(e) => setMonthly(e.target.value)} />
           </div>
@@ -107,7 +108,7 @@ export function CardControls({
               Cancel
             </button>
             <button type="submit" className={button("primary")} disabled={pending}>
-              {spin("limits") && <LoaderCircle className="h-4 w-4 animate-spin" />} Save limits
+              {spin("limits") && <LoaderCircle className="h-4 w-4 animate-spin" />} Save thresholds
             </button>
           </div>
         </form>
@@ -124,7 +125,7 @@ export function CardControls({
             </button>
           )}
           <button className={button("ghost")} disabled={pending} onClick={() => setEditing(true)}>
-            <SlidersHorizontal className="h-4 w-4" /> Limits
+            <SlidersHorizontal className="h-4 w-4" /> Thresholds
           </button>
           <button
             className={button("ghost", "text-bad")}
@@ -187,13 +188,13 @@ export function IssueCardForm({ members, events }: { members: { id: string; name
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label htmlFor="issue-cap" className={label}>
-            Per purchase (€)
+            Purchase review threshold (€)
           </label>
           <input id="issue-cap" inputMode="decimal" className={cx(field, "tabular")} value={cap} onChange={(e) => setCap(e.target.value)} />
         </div>
         <div>
           <label htmlFor="issue-monthly" className={label}>
-            Per month (€)
+            Monthly review threshold (€)
           </label>
           <input id="issue-monthly" inputMode="decimal" className={cx(field, "tabular")} value={monthly} onChange={(e) => setMonthly(e.target.value)} />
         </div>
