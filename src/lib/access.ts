@@ -6,7 +6,7 @@ import type { Actor } from "./session";
 //   Societies Council (admin) — oversight of every society; doesn't act on a society's money.
 //   Treasurer                 — everything in their own society; the only member who manages money.
 //   Senior treasurer          — sees everything in their society (read-only) and prepares grant reports.
-//   Other members/officers    — their own card, their own purchases, expenses and reviews, and the
+//   Other members/officers    — their own card, their own purchases and reviews, and the
 //                               events their card spends for. Never other people's cards or spending,
 //                               and none of the society's funding, ledger or billing.
 

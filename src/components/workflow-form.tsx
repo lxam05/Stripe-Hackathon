@@ -14,7 +14,7 @@ export function WorkflowForm({ resource,id,fields=[],actions=[{ value:"save",lab
     try {
       const res=await fetch(`/api/workflows/${resource}`,{ method:"POST",...(multipart ? { body:data } : { headers:{"content-type":"application/json"},body:JSON.stringify(Object.fromEntries(data)) }) });
       const j=await res.json(); if(!res.ok)throw new Error(j.error?.message ?? "Unable to save.");
-      setSuccess("Saved.");router.refresh(); if(["expenses","members","societies"].includes(resource))form.reset();
+      setSuccess("Saved.");router.refresh(); if(["members","societies"].includes(resource))form.reset();
     } catch(err) {setError(err instanceof Error ? err.message : "Unable to save. Please retry.");} finally{setBusy(false);}
   }}>
     <div className="grid gap-3 sm:grid-cols-2">{fields.map(f=><div key={f.name} className={f.type === "textarea" || f.type === "checkbox" ? "sm:col-span-2" : ""}>

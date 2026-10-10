@@ -383,7 +383,7 @@ export async function createOfficerCard(input: NewCardInput, actor: string) {
     | { id: string; name: string; role: string }
     | undefined;
   if (!member) throw new UserError("validation", "Pick a cardholder from your committee.");
-  if (["member","senior_treasurer"].includes(member.role)) throw new UserError("validation", "Cards are issued to committee members; ordinary members can submit expenses.");
+  if (["member","senior_treasurer"].includes(member.role)) throw new UserError("validation", "Cards are issued to committee members.");
   if (input.eventId) assertOpenEvent(input.eventId, input.societyId);
 
   const cardId = newId("card");

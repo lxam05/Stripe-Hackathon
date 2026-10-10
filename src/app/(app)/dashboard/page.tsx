@@ -2,7 +2,7 @@ import Link from "next/link";
 import { requireMember } from "@/lib/guard";
 import type { MemberActor } from "@/lib/session";
 import { isFinance, isTreasurer, reportOwner } from "@/lib/access";
-import { listExpenses, listReviews, listReports } from "@/lib/workflows";
+import { listReviews, listReports } from "@/lib/workflows";
 import { getSociety, listCards, listEvents, listTransactions, monthlySpend } from "@/lib/queries";
 import { societyBalances } from "@/lib/ledger";
 import { PLAN_LAPSED_REASON } from "@/lib/cards";
@@ -32,8 +32,6 @@ export default async function Dashboard() {
   const s = getSociety(a.societyId)!;
   const b = societyBalances(s.id);
   const reviews = listReviews(a).filter((r) => ["pending", "receipt_requested"].includes(r.status));
-  const claims = listExpenses(a).filter((e) => ["submitted", "approved"].includes(e.status));
-  const owesMembers = claims.reduce((sum, e) => sum + e.amount_cents, 0);
   const spend = monthlySpend(s.id);
   const report = listReports(a)[0];
   const ownsReport = reportOwner(s.id)?.id === a.id;
@@ -46,13 +44,6 @@ export default async function Dashboard() {
       title: `${prettyMerchant(r.merchant_name)}`,
       detail: `${r.member_name.split(" ")[0]} · ${r.status === "receipt_requested" ? "receipt requested" : plainText(r.reason) || "first payment to this shop"}`,
       amount: r.amount_cents,
-    })),
-    ...claims.map((e) => ({
-      href: "/expenses",
-      icon: Receipt,
-      title: `Repay ${e.member_name.split(" ")[0]}`,
-      detail: `${e.merchant} · ${e.status === "approved" ? "approved, not yet paid" : "expense to approve"}`,
-      amount: e.amount_cents,
     })),
     ...(ownsReport && (!report || report.status === "draft")
       ? [{ href: "/reports", icon: FileText, title: "Annual grant report", detail: report ? "Draft in progress" : "Ready to start" }]
@@ -73,14 +64,11 @@ export default async function Dashboard() {
           ) : undefined
         }
       >
-        {todos.length
-          ? [
-              reviews.length && `${reviews.length} payment${reviews.length === 1 ? "" : "s"} to review`,
-              claims.length && `${claims.length} expense${claims.length === 1 ? "" : "s"} to repay`,
-            ]
-              .filter(Boolean)
-              .join(" and ") + "." || "Your grant report is ready to work on."
-          : "Everything is up to date."}
+        {reviews.length
+          ? `${reviews.length} payment${reviews.length === 1 ? "" : "s"} to review.`
+          : todos.length
+            ? "Your grant report is ready to work on."
+            : "Everything is up to date."}
       </PageHeader>
       {s.plan_status !== "active" && (
         <div className="mb-6">
@@ -96,7 +84,7 @@ export default async function Dashboard() {
       <div className="grid gap-3 sm:grid-cols-3">
         <StatTile label="Available to spend" cents={b.available} />
         <StatTile label="Spent so far" cents={b.spent} tone="spent" />
-        <StatTile label="Owed to members" cents={owesMembers} hint={claims.length ? `${claims.length} expense${claims.length === 1 ? "" : "s"}` : "Nothing outstanding"} />
+        <StatTile label="Card holds" cents={b.held} hint="Authorised, not yet settled" />
       </div>
 
       <Panel className="mt-6">
@@ -160,7 +148,6 @@ function OfficerHome({ actor }: { actor: MemberActor }) {
       <PageHeader
         eyebrow={`${soc.name} · ${ROLE_LABEL[actor.role] ?? actor.role}`}
         title={<>{greetingNow()}, {actor.name.split(" ")[0]}.</>}
-        actions={<Link href="/expenses" className={button("secondary")}>Claim an expense</Link>}
       >
         {flags.length > 0
           ? `${flags.length} of your purchase${flags.length === 1 ? " is" : "s are"} waiting on your treasurer. Nothing for you to do.`

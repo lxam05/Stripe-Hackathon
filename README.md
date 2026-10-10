@@ -1,6 +1,6 @@
 # Balance
 
-A local sandbox for UCD society spending: committee cards, post-payment treasurer reviews, member reimbursements and annual grant reports for Societies Council.
+A local sandbox for UCD society spending: committee cards (so officers never pay out of pocket), post-payment treasurer reviews and annual grant reports for Societies Council.
 
 ## Run locally
 
@@ -38,7 +38,6 @@ Tests use a separate disposable database and never reset your app database. `npm
 | Societies | All (oversight) | Their own | Their own | Their own |
 | Committee cards | All | All, and manages them | All (read-only) | Only their own card |
 | Card payments, reviews, risk investigations | All | Whole society; decides reviews | Whole society (read-only) | Only payments on their own card |
-| Expenses | All | All claims; approves and records repayment | All claims | Only their own claims and receipts |
 | Events | All | All; creates, tags cards, closes | All | Events their card is on or they bought for; only their own purchases on them |
 | Funding & ledger | Overview | Yes | Yes | No |
 | Plan & billing | No | Yes | No | No |
@@ -94,14 +93,14 @@ JEV calls OpenRouter, never a model provider directly. Risk context is pseudonym
 | Cards and paid capacity | `cards.ts`, `payments.ts` |
 | AI risk and report drafts | `jev.ts`, `assess.ts` |
 | Schema and additive demo upgrade | `db.ts`, `demo-workflows.ts` |
-| Workflow mutations and receipts | `src/app/api/workflows/[resource]`, `api/expenses/[id]/receipt` |
+| Workflow mutations | `src/app/api/workflows/[resource]` |
 | Regression coverage | `scripts/test.ts`, `scripts/test-workflows.ts` |
 
 See [the current PRD](docs/PRD.md) for evidence, assumptions and acceptance criteria; [DATA.md](DATA.md) for synthetic data provenance.
 
 ## Limitations
 
-Demo cookie identities are deliberately selectable: this is not production authentication. SQLite is local. Receipts need production malware scanning/retention controls. Approved claims are shown as liabilities but not reserved funds. Grant snapshots require human checking. Background risk jobs are in-process, and production needs durable processing plus stronger network reconciliation, webhook concurrency/ordering and capture-adjustment handling.
+Demo cookie identities are deliberately selectable: this is not production authentication. SQLite is local. Grant snapshots require human checking. Background risk jobs are in-process, and production needs durable processing plus stronger network reconciliation, webhook concurrency/ordering and capture-adjustment handling.
 
 Interview-reported UCD practices are evidence for the prototype, not verified institutional policy. No measured fraud reduction or time-saving claims are made.
 

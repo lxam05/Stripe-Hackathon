@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { audit, getDb, newId, nowIso } from "./db";
-import { assertCouncil, assertReportOwner, assertSociety, assertTreasurer } from "./access";
+import { assertCouncil, assertReportOwner, assertTreasurer } from "./access";
 import { UserError } from "./errors";
 import { ROLE_LABEL } from "./roles";
 import type { Actor } from "./session";
-import { postEntry, societyBalances } from "./ledger";
+import { societyBalances } from "./ledger";
 import { draftGrantNarrative } from "./jev";
 
 const cents = z.number().int().min(1).max(5_000_000);
@@ -95,59 +95,7 @@ export function revokeMandate(actor: Actor, id: string) {
   audit(actor.id,"mandate.revoked",id);
 }
 
-export interface Expense { id: string; society_id: string; member_id: string; member_name: string; event_id: string | null; merchant: string; category: string; purpose: string; amount_cents: number; incurred_on: string; receipt_name: string; status: string; note: string; payment_reference: string | null; paid_at: string | null; created_at: string }
-export function listExpenses(actor: Actor) {
-  return getDb().prepare(`SELECT e.id,e.society_id,e.member_id,m.name member_name,e.event_id,e.merchant,e.category,e.purpose,e.amount_cents,e.incurred_on,e.receipt_name,e.status,e.note,e.payment_reference,e.paid_at,e.created_at FROM expense e JOIN member m ON m.id=e.member_id
-    ${actor.kind === "member" ? "WHERE e.society_id=?" + (["treasurer","senior_treasurer"].includes(actor.role) ? "" : " AND e.member_id=?") : ""} ORDER BY e.created_at DESC`)
-    .all(...(actor.kind === "member" ? [actor.societyId, ...(["treasurer","senior_treasurer"].includes(actor.role) ? [] : [actor.id])] : [])) as Expense[];
-}
-export function submitExpense(actor: Actor, input: unknown, receipt: { name: string; type: string; bytes: Buffer }) {
-  if (actor.kind !== "member") throw new UserError("forbidden","Only a society member can claim expenses.",403);
-  const b = z.object({ merchant: z.string().trim().min(1).max(100), purpose: z.string().trim().min(3).max(1000), category: z.enum(["food","travel","equipment","venue","other"]), amountCents: cents, incurredOn: z.iso.date(), eventId: z.string().nullable() }).parse(input);
-  if (b.incurredOn > nowIso().slice(0,10)) throw new UserError("validation","Expense date cannot be in the future.");
-  if (!receipt.bytes.length || receipt.bytes.length > 5*1024*1024) throw new UserError("validation","Attach a receipt up to 5 MB.");
-  const magic = receipt.bytes;
-  const valid = (receipt.type === "application/pdf" && magic.subarray(0,5).toString() === "%PDF-") || (receipt.type === "image/png" && magic.subarray(0,8).toString("hex") === "89504e470d0a1a0a") || (receipt.type === "image/jpeg" && magic[0] === 255 && magic[1] === 216 && magic[2] === 255);
-  if (!valid) throw new UserError("validation","Receipt must be a PDF, PNG or JPEG file.");
-  const db = getDb();
-  if (b.eventId && !db.prepare(`SELECT id FROM event WHERE id=? AND society_id=?`).get(b.eventId,actor.societyId)) throw new UserError("validation","Choose an event from your society.");
-  const id = newId("expense");
-  db.prepare(`INSERT INTO expense(id,society_id,member_id,event_id,merchant,category,purpose,amount_cents,incurred_on,receipt_name,receipt_type,receipt,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)`)
-    .run(id,actor.societyId,actor.id,b.eventId,b.merchant,b.category,b.purpose,b.amountCents,b.incurredOn,receipt.name.replace(/[^a-zA-Z0-9._ -]/g,"_").slice(0,100),receipt.type,receipt.bytes,nowIso());
-  audit(actor.id,"expense.submitted",id);
-  return id;
-}
-export function reviewExpense(actor: Actor, id: string, input: unknown) {
-  const b = z.object({ action: z.enum(["approve","decline","paid"]), note: z.string().trim().max(1000), paymentReference: z.string().trim().max(160).optional() }).parse(input);
-  const db = getDb();
-  return db.transaction(() => {
-    const e = db.prepare(`SELECT * FROM expense WHERE id=?`).get(id) as Expense | undefined;
-    if (!e) throw new UserError("not_found","Expense not found",404);
-    assertTreasurer(actor,e.society_id);
-    if (b.action === "paid" && e.status === "paid") return false;
-    if (b.action === "paid") {
-      if (e.status !== "approved" || !b.paymentReference) throw new UserError("validation","Approve first and enter the reference for the external repayment.");
-      if (societyBalances(e.society_id).available < e.amount_cents) throw new UserError("insufficient_budget","Insufficient society balance to record this repayment.");
-      postEntry({ societyId:e.society_id,eventId:e.event_id,type:"spend",amountCents:e.amount_cents,refType:"expense",refId:id,memo:`Reimbursement: ${e.merchant}`,at:nowIso() });
-      db.prepare(`UPDATE expense SET status='paid',paid_at=?,payment_reference=?,note=? WHERE id=?`).run(nowIso(),b.paymentReference,b.note,id);
-    } else {
-      if (e.status !== "submitted") throw new UserError("conflict","This expense has already been reviewed.",409);
-      if (b.action === "decline" && !b.note) throw new UserError("validation","Explain why this expense was declined.");
-      db.prepare(`UPDATE expense SET status=?,note=?,reviewed_by=? WHERE id=?`).run(b.action === "approve" ? "approved" : "declined",b.note,actor.id,id);
-    }
-    audit(actor.id,`expense.${b.action}`,id,{ note:b.note, paymentReference:b.paymentReference });
-    return true;
-  }).immediate();
-}
-export function getReceipt(actor: Actor, id: string) {
-  const e = getDb().prepare(`SELECT * FROM expense WHERE id=?`).get(id) as (Expense & { receipt: Buffer; receipt_type: string }) | undefined;
-  if (!e) throw new UserError("not_found","Receipt not found",404);
-  assertSociety(actor,e.society_id);
-  if (actor.kind === "member" && !["treasurer","senior_treasurer"].includes(actor.role) && actor.id !== e.member_id) throw new UserError("forbidden","This receipt belongs to another member.",403);
-  return e;
-}
-
-export interface Evidence { start: string; end: string; spent: number; previousSpent: number; previousCount: number; reimbursements: number; outstanding: number; held: number; categories: { name: string; cents: number }[]; events: { name: string; cents: number }[]; entries: { id: number; ref_type: string; ref_id: string; amount_cents: number; type: string; created_at: string; memo: string }[] }
+export interface Evidence { start: string; end: string; spent: number; previousSpent: number; previousCount: number; held: number; categories: { name: string; cents: number }[]; events: { name: string; cents: number }[]; entries: { id: number; ref_type: string; ref_id: string; amount_cents: number; type: string; created_at: string; memo: string }[] }
 export function reportEvidence(societyId: string, year: number): Evidence {
   z.number().int().min(2020).max(2100).parse(year);
   const db = getDb();
@@ -155,9 +103,8 @@ export function reportEvidence(societyId: string, year: number): Evidence {
   const entries = db.prepare(`SELECT id,ref_type,ref_id,amount_cents,type,created_at,memo FROM ledger_entry WHERE society_id=? AND created_at>=? AND created_at<? AND type IN ('spend','refund') ORDER BY created_at`).all(societyId,start,end) as Evidence["entries"];
   const previous = db.prepare(`SELECT COUNT(*) n,COALESCE(SUM(CASE type WHEN 'spend' THEN amount_cents ELSE -amount_cents END),0) cents FROM ledger_entry WHERE society_id=? AND created_at>=? AND created_at<? AND type IN ('spend','refund')`).get(societyId,`${year-1}-09-01T00:00:00.000Z`,start) as { n: number; cents: number };
   const group = (expr: string, join: string) => db.prepare(`SELECT ${expr} name, SUM(CASE l.type WHEN 'spend' THEN l.amount_cents ELSE -l.amount_cents END) cents FROM ledger_entry l ${join} WHERE l.society_id=? AND l.created_at>=? AND l.created_at<? AND l.type IN ('spend','refund') GROUP BY 1 ORDER BY cents DESC`).all(societyId,start,end) as { name: string; cents: number }[];
-  const outstanding = db.prepare(`SELECT COALESCE(SUM(amount_cents),0) n FROM expense WHERE society_id=? AND status IN ('submitted','approved') AND incurred_on>=? AND incurred_on<?`).get(societyId,start.slice(0,10),end.slice(0,10)) as { n: number };
-  return { start,end,spent:entries.reduce((s,e)=>s+(e.type === "spend" ? e.amount_cents : -e.amount_cents),0),previousSpent:previous.cents,previousCount:previous.n,reimbursements:entries.filter(e=>e.ref_type === "expense").reduce((s,e)=>s+e.amount_cents,0),outstanding:outstanding.n,held:societyBalances(societyId).held,
-    categories:group("COALESCE(a.mcc_group,x.category,'other')","LEFT JOIN authorization a ON l.ref_type='authorization' AND a.id=l.ref_id LEFT JOIN expense x ON l.ref_type='expense' AND x.id=l.ref_id"),
+  return { start,end,spent:entries.reduce((s,e)=>s+(e.type === "spend" ? e.amount_cents : -e.amount_cents),0),previousSpent:previous.cents,previousCount:previous.n,held:societyBalances(societyId).held,
+    categories:group("COALESCE(a.mcc_group,'other')","LEFT JOIN authorization a ON l.ref_type='authorization' AND a.id=l.ref_id"),
     events:group("COALESCE(e.name,'General spending')","LEFT JOIN event e ON e.id=l.event_id"),entries };
 }
 export interface GrantReport { id: string; society_id: string; society_name: string; year: number; status: string; evidence: string; narrative: string; estimate_cents: number; draft_source: string; council_notes: string; approved_cents: number | null; updated_at: string; submitted_at: string | null }
@@ -169,11 +116,11 @@ export async function draftReport(actor: Actor, societyId: string, year: number)
   const db = getDb();
   if (db.prepare(`SELECT id FROM grant_report WHERE society_id=? AND year=?`).get(societyId,year)) throw new UserError("conflict","A report for this year already exists. Edit the existing draft.",409);
   const evidence = reportEvidence(societyId,year);
-  const draft = await draftGrantNarrative({ year,spent:evidence.spent,previousSpent:evidence.previousSpent,previousCount:evidence.previousCount,reimbursements:evidence.reimbursements,outstanding:evidence.outstanding,categories:evidence.categories });
+  const draft = await draftGrantNarrative({ year,spent:evidence.spent,previousSpent:evidence.previousSpent,previousCount:evidence.previousCount,categories:evidence.categories });
   // Recheck after the asynchronous model call: ownership or another draft may have changed.
   assertReportOwner(actor,societyId);
   const id = newId("report");
-  db.prepare(`INSERT INTO grant_report(id,society_id,year,evidence,narrative,estimate_cents,draft_source,created_by,updated_at) VALUES(?,?,?,?,?,?,?,?,?)`).run(id,societyId,year,JSON.stringify(evidence),draft.text,Math.max(0,evidence.spent+evidence.outstanding),draft.source,actor.id,nowIso());
+  db.prepare(`INSERT INTO grant_report(id,society_id,year,evidence,narrative,estimate_cents,draft_source,created_by,updated_at) VALUES(?,?,?,?,?,?,?,?,?)`).run(id,societyId,year,JSON.stringify(evidence),draft.text,Math.max(0,evidence.spent),draft.source,actor.id,nowIso());
   audit(actor.id,"report.drafted",id,{ source:draft.source });
   return id;
 }

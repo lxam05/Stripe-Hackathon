@@ -25,7 +25,6 @@ export function AppShell({ actor, children }: { actor: Actor; children: ReactNod
         ? [
             { href: "/dashboard", label: "Overview", icon: "dashboard" },
             { href: "/cards", label: "Cards", icon: "cards" },
-            { href: "/expenses", label: "Expenses", icon: "transactions" },
             { href: "/reports", label: "Grant report", icon: "admin" },
             { href: "/members", label: "Members", icon: "admin" },
             { href: "/events", label: "Events", icon: "events" },
@@ -37,7 +36,6 @@ export function AppShell({ actor, children }: { actor: Actor; children: ReactNod
         : [
             { href: "/dashboard", label: "Overview", icon: "dashboard" },
             { href: "/cards", label: "My card", icon: "cards" },
-            { href: "/expenses", label: "My expenses", icon: "transactions" },
             { href: "/events", label: "My events", icon: "events" },
             { href: "/review", label: "My payment reviews", icon: "review", badge: flags },
             { href: "/transactions", label: "My purchases", icon: "transactions" },

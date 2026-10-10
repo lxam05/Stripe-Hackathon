@@ -34,7 +34,7 @@ export const SOCIETY_PLAN = {
   interval: "year" as const,
   perks: [
     "5 committee cards; extra slots €10 each for the remaining plan year",
-    "Post-payment reviews, recurring approvals and member expenses",
+    "Post-payment reviews and recurring approvals",
     "Annual spending report and Council grant review",
     "AI risk checks on every purchase",
     "Public sponsor top-up page + QR code",

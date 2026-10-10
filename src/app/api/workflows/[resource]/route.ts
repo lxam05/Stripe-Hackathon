@@ -1,19 +1,12 @@
 import { getActor } from "@/lib/session";
 import { apiError, handleError, readJson } from "@/lib/api";
-import { addMember, changeLeadership, createSociety, draftReport, reviewExpense, reviewPayment, revokeMandate, submitExpense, updateReport } from "@/lib/workflows";
+import { addMember, changeLeadership, createSociety, draftReport, reviewPayment, revokeMandate, updateReport } from "@/lib/workflows";
 
 export async function POST(req: Request, { params }: { params: Promise<{ resource: string }> }) {
   const actor=await getActor();
   if (!actor) return apiError(401,"unauthenticated","Choose a demo user first.");
   try {
     const { resource }=await params;
-    if (resource === "expenses") {
-      const f=await req.formData(); const file=f.get("receipt");
-      if (!(file instanceof File)) return apiError(400,"validation","Attach a receipt.");
-      if (file.size>5*1024*1024) return apiError(400,"validation","Receipt limit is 5 MB.");
-      const id=submitExpense(actor,{ merchant:f.get("merchant"),purpose:f.get("purpose"),category:f.get("category"),amountCents:Math.round(Number(f.get("amount"))*100),incurredOn:f.get("incurredOn"),eventId:f.get("eventId") || null },{ name:file.name,type:file.type,bytes:Buffer.from(await file.arrayBuffer()) });
-      return Response.json({ id });
-    }
     const b=await readJson<Record<string,unknown>>(req); const id=String(b.id ?? "");
     if (resource === "societies") return Response.json({ id:createSociety(actor,{ name:b.name,slug:b.slug,treasurer:{ name:b.treasurerName,email:b.treasurerEmail },...(b.seniorName || b.seniorEmail ? { senior:{ name:b.seniorName,email:b.seniorEmail } } : {}) }) });
     if (resource === "leadership") changeLeadership(actor,id,{ treasurerId:b.treasurerId,seniorId:b.seniorId || null });
@@ -22,7 +15,6 @@ export async function POST(req: Request, { params }: { params: Promise<{ resourc
       return Response.json({ id:addMember(actor,actor.societyId,b) });
     } else if (resource === "reviews") reviewPayment(actor,id,{ status:b.action,note:b.note ?? "",...(b.recurring ? { mandate:{ minCents:Math.round(Number(b.min)*100),maxCents:Math.round(Number(b.max)*100),cadence:b.cadence,endsAt:`${b.endsOn}T23:59:59.000Z` } } : {}) });
     else if (resource === "mandates") revokeMandate(actor,id);
-    else if (resource === "expense-review") reviewExpense(actor,id,{ action:b.action,note:b.note ?? "",paymentReference:b.paymentReference });
     else if (resource === "report-draft") {
       if (actor.kind !== "member") return apiError(403,"forbidden","Only the reporting owner can draft a report.");
       return Response.json({ id:await draftReport(actor,actor.societyId,Number(b.year)) });

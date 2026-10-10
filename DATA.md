@@ -44,7 +44,7 @@ The 2025/26 purchases are split **70% history / 30% evaluation**, *stratified by
 
 ## Workflow examples (v2)
 
-The additive demo upgrade adds a fictional ordinary member, auditor and senior treasurer to Drama; an emergency-refreshment claim; a €1,000 approved claim awaiting external repayment; and an editable annual report backed by the ledger. Receipt fixtures are explicitly labelled synthetic. Historic payment reviews are marked imported history, not fabricated treasurer approvals.
+The additive demo upgrade adds a fictional ordinary member, auditor and senior treasurer to Drama and an editable annual report backed by the ledger. Historic payment reviews are marked imported history, not fabricated treasurer approvals.
 
 The emergency substitution and temporary €1,000 personal cash burden are inspired by interview context supplied by the product owner. The records, people and amounts shown in this fictional society are demonstration data, not the real Netsoc transaction or an official UCD case file. See PRD v2 for the evidence/assumption distinction.
 

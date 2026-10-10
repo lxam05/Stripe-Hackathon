@@ -273,27 +273,6 @@ CREATE TABLE IF NOT EXISTS recurring_mandate (
   created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS mandate_match ON recurring_mandate(society_id, member_id, merchant_key, status);
-CREATE TABLE IF NOT EXISTS expense (
-  id TEXT PRIMARY KEY,
-  society_id TEXT NOT NULL REFERENCES society(id),
-  member_id TEXT NOT NULL REFERENCES member(id),
-  event_id TEXT REFERENCES event(id),
-  merchant TEXT NOT NULL,
-  category TEXT NOT NULL,
-  purpose TEXT NOT NULL,
-  amount_cents INTEGER NOT NULL CHECK(amount_cents > 0),
-  incurred_on TEXT NOT NULL,
-  receipt_name TEXT NOT NULL,
-  receipt_type TEXT NOT NULL,
-  receipt BLOB NOT NULL,
-  status TEXT NOT NULL DEFAULT 'submitted',
-  note TEXT NOT NULL DEFAULT '',
-  reviewed_by TEXT,
-  payment_reference TEXT,
-  paid_at TEXT,
-  created_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS expense_society ON expense(society_id, member_id, status);
 CREATE TABLE IF NOT EXISTS grant_report (
   id TEXT PRIMARY KEY,
   society_id TEXT NOT NULL REFERENCES society(id),
