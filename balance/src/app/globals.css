@@ -1,0 +1,160 @@
+@import "tailwindcss";
+
+/* ── Balance design tokens ──────────────────────────────────────────────────
+   Warm paper surfaces that match the OpenArt clay illustrations, a deep
+   "stone" green for the brand, coral + butter accents from the hero sculpture. */
+:root {
+  --paper: #f7efe6;
+  --paper-2: #f1e7da;
+  --surface: #fffbf6;
+  --line: #e7dccd;
+  --line-strong: #d6c7b3;
+  --ink: #16201c;
+  --ink-2: #4a5550;
+  --ink-3: #7d857f;
+  --stone: #23463b;
+  --stone-2: #2f5d50;
+  --mint: #cfe6dc;
+  --coral: #e07a5f;
+  --butter: #f2c66d;
+  /* data viz (validated: light surface, CVD-separated, held also carries texture) */
+  --viz-spent: #0e8a63;
+  --viz-held: #c9741a;
+  --viz-grid: #ece2d5;
+  /* status — always paired with icon + label */
+  --ok: #157a52;
+  --ok-bg: #e2f2e9;
+  --warn: #9a5b00;
+  --warn-bg: #fbefd5;
+  --bad: #b3261e;
+  --bad-bg: #fbe4e1;
+  --info: #2a5a8a;
+  --info-bg: #e3edf7;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-surface: var(--surface);
+  --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-stone: var(--stone);
+  --color-stone-2: var(--stone-2);
+  --color-mint: var(--mint);
+  --color-coral: var(--coral);
+  --color-butter: var(--butter);
+  --color-ok: var(--ok);
+  --color-ok-bg: var(--ok-bg);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-bad: var(--bad);
+  --color-bad-bg: var(--bad-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --font-display: var(--font-instrument-serif);
+  --shadow-card: 0 1px 0 rgba(22, 32, 28, 0.04), 0 8px 24px -12px rgba(22, 32, 28, 0.12);
+  --shadow-lift: 0 2px 0 rgba(22, 32, 28, 0.04), 0 24px 48px -20px rgba(22, 32, 28, 0.28);
+}
+
+html {
+  color-scheme: light;
+  /* Own background on <html> so <body> paints its own, giving mix-blend-mode a backdrop. */
+  background-color: var(--paper);
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-feature-settings: "ss01", "cv11";
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.display {
+  font-family: var(--font-instrument-serif), Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+/* Diagonal texture for "held" money — secondary encoding so it never relies on colour. */
+.held-texture {
+  background-color: var(--viz-held);
+  background-image: repeating-linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.38) 0 2px,
+    transparent 2px 6px
+  );
+}
+
+/* Glossy sheen on virtual cards. */
+.card-sheen::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.28) 0%, rgba(255, 255, 255, 0) 38%, rgba(255, 255, 255, 0) 70%, rgba(255, 255, 255, 0.12) 100%);
+  pointer-events: none;
+}
+
+.grain {
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 .05 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.rise {
+  animation: rise 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.pulse-dot {
+  animation: pulse-dot 1.4s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rise, .pulse-dot {
+    animation: none;
+  }
+}
+
+:focus-visible {
+  outline: 2px solid var(--stone-2);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+::selection {
+  background: var(--mint);
+}
+
+/* Feather the edges of cream-backed clay illustrations into whatever surface they sit on. */
+.feather {
+  -webkit-mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%);
+  mask-image: radial-gradient(ellipse 50% 50% at 50% 50%, #000 62%, transparent 100%);
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
