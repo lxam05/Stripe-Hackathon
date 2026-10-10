@@ -134,7 +134,7 @@ export function Simulator({
             ) : (
               <>General spending · {fmtEur(Math.max(0, card.remaining))} available</>
             )}{" "}
-            · review above {fmtEur(card.cap)} a purchase · {fmtEur(Math.max(0, card.monthLeft))} to monthly review threshold
+            · maximum {fmtEur(card.cap)} per purchase · {fmtEur(Math.max(0, card.monthLeft))} left this month
           </p>
         </div>
 

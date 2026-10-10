@@ -1,8 +1,56 @@
 {
-  "ran_at": "2026-10-10T12:16:34.196Z",
-  "passed": 65,
-  "total": 65,
+  "ran_at": "2026-10-10T12:46:09.713Z",
+  "passed": 71,
+  "total": 71,
   "results": [
+    {
+      "id": "O4",
+      "kind": "Ordinary",
+      "name": "Drama has one card slot and Orla receives it",
+      "expected": "4 active, then Orla's fifth card",
+      "actual": "4 before, issued",
+      "pass": true
+    },
+    {
+      "id": "C1",
+      "kind": "Boundary",
+      "name": "€200 card limit, then one cent over",
+      "expected": "€200 approved; €200.01 declined",
+      "actual": "true/spending_controls",
+      "pass": true
+    },
+    {
+      "id": "C2",
+      "kind": "Boundary",
+      "name": "€500 monthly limit, then one cent over",
+      "expected": "Exactly €500 approved; next cent declined",
+      "actual": "true/spending_controls",
+      "pass": true
+    },
+    {
+      "id": "C3",
+      "kind": "Invariant",
+      "name": "Event essentials is an allowlist",
+      "expected": "Food approved; games and unknown categories declined",
+      "actual": "true/blocked_card_profile/blocked_card_profile",
+      "pass": true
+    },
+    {
+      "id": "C4",
+      "kind": "Invariant",
+      "name": "Trip adds travel but cannot relax global blocks",
+      "expected": "Airline approved; gambling declined by global policy",
+      "actual": "true/blocked_mcc",
+      "pass": true
+    },
+    {
+      "id": "C5",
+      "kind": "Invariant",
+      "name": "Stripe controls mirror local limits and trip categories",
+      "expected": "€200 per authorization, €500 monthly, airlines allowed, gambling absent",
+      "actual": "[{\"amount\":20000,\"interval\":\"per_authorization\"},{\"amount\":50000,\"interval\":\"monthly\"}]",
+      "pass": true
+    },
     {
       "id": "O2",
       "kind": "Ordinary",
@@ -36,17 +84,9 @@
       "pass": true
     },
     {
-      "id": "O4",
-      "kind": "Ordinary",
-      "name": "Plan renewed: lapsed officer cards wake up",
-      "expected": "5 of 5 cards active",
-      "actual": "5 of 5 active",
-      "pass": true
-    },
-    {
       "id": "O1",
       "kind": "Ordinary",
-      "name": "€184 at Domino's on Pizza Night",
+      "name": "€18.40 at Domino's on Pizza Night",
       "expected": "Approved, rules < 40, no flag",
       "actual": "approved, score 0, no flag",
       "pass": true
@@ -111,16 +151,16 @@
       "id": "B3b",
       "kind": "Boundary",
       "name": "Cap + €0.01",
-      "expected": "Approved with H5 review signal",
-      "actual": "null",
+      "expected": "Declined by hard spending controls",
+      "actual": "spending_controls",
       "pass": true
     },
     {
       "id": "B9",
       "kind": "Boundary",
       "name": "Monthly card limit exactly reached, then + €0.01",
-      "expected": "Both approved; H6 triggers review",
-      "actual": "approved, then null (H6)",
+      "expected": "Exact limit approved; next cent declined",
+      "actual": "approved, then spending_controls (H6)",
       "pass": true
     },
     {
@@ -177,6 +217,14 @@
       "name": "Two concurrent €60 auths on a €100 budget",
       "expected": "One approved, one declined",
       "actual": "1 approved",
+      "pass": true
+    },
+    {
+      "id": "D1",
+      "kind": "Invariant",
+      "name": "Duplicate marketplace request is idempotent",
+      "expected": "One authorization, one €18.40 balance movement",
+      "actual": "1 authorization, same=true",
       "pass": true
     },
     {
@@ -350,7 +398,7 @@
     {
       "id": "W10",
       "kind": "Invariant",
-      "name": "First-time payment succeeds and queues immediate review",
+      "name": "Routine policy-compliant payment needs no review",
       "expected": "Pass",
       "actual": "Pass",
       "pass": true
@@ -374,7 +422,7 @@
     {
       "id": "W13",
       "kind": "Invariant",
-      "name": "Duplicate in same cadence returns to review",
+      "name": "Duplicate payment returns to review",
       "expected": "Pass",
       "actual": "Pass",
       "pass": true
@@ -382,7 +430,7 @@
     {
       "id": "W14",
       "kind": "Invariant",
-      "name": "Amount outside mandate returns to review",
+      "name": "Routine amount outside a mandate needs no review",
       "expected": "Pass",
       "actual": "Pass",
       "pass": true
@@ -390,7 +438,7 @@
     {
       "id": "W15",
       "kind": "Invariant",
-      "name": "Different currency cannot match mandate",
+      "name": "Routine different-currency payment needs no review",
       "expected": "Pass",
       "actual": "Pass",
       "pass": true
@@ -398,7 +446,7 @@
     {
       "id": "W16",
       "kind": "Invariant",
-      "name": "Different merchant cannot match mandate",
+      "name": "Routine different merchant needs no review",
       "expected": "Pass",
       "actual": "Pass",
       "pass": true
@@ -406,7 +454,7 @@
     {
       "id": "W17",
       "kind": "Invariant",
-      "name": "Different cardholder cannot match mandate",
+      "name": "Routine different cardholder needs no review",
       "expected": "Pass",
       "actual": "Pass",
       "pass": true
@@ -414,7 +462,7 @@
     {
       "id": "W18",
       "kind": "Invariant",
-      "name": "Over-threshold payment succeeds and is immediately visible",
+      "name": "Over-limit payment is declined atomically",
       "expected": "Pass",
       "actual": "Pass",
       "pass": true
@@ -438,7 +486,7 @@
     {
       "id": "W21",
       "kind": "Invariant",
-      "name": "Revoked mandates never bypass review",
+      "name": "Revoked mandate does not claim an automatic match",
       "expected": "Pass",
       "actual": "Pass",
       "pass": true

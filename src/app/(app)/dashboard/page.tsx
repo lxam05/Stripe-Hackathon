@@ -135,7 +135,7 @@ export default async function Dashboard() {
           <div className="px-5 pb-2 pt-5">
             <SectionTitle aside={<Link href="/transactions">All →</Link>}>Recent card payments</SectionTitle>
           </div>
-          <TxnList rows={listTransactions({ societyId: s.id, limit: 6 })} />
+          <TxnList rows={listTransactions({ societyId: s.id, limit: 6 })} showCardholder />
         </Panel>
       </div>
     </>

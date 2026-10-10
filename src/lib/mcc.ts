@@ -27,6 +27,7 @@ const T: MccInfo[] = [
   { code: "5813", label: "Bars / pubs / nightclubs", group: "alcohol", stripe: "drinking_places", defaultPolicy: "review" },
   { code: "5921", label: "Off-licence (beer, wine, spirits)", group: "alcohol", stripe: "package_stores_beer_wine_and_liquor", defaultPolicy: "review" },
   { code: "5732", label: "Electronics stores", group: "tech", stripe: "electronics_stores", defaultPolicy: "review" },
+  { code: "5945", label: "Games, toys & hobbies", group: "games", stripe: "hobby_toy_and_game_shops", defaultPolicy: "allow" },
   { code: "5045", label: "Computers & peripherals", group: "tech", stripe: "computers_peripherals_and_software", defaultPolicy: "review" },
   { code: "4511", label: "Airlines", group: "travel_long", stripe: "airlines_air_carriers", defaultPolicy: "review" },
   { code: "7011", label: "Hotels / hostels", group: "lodging", stripe: "hotels_motels_and_resorts", defaultPolicy: "review" },

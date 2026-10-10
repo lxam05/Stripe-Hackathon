@@ -11,6 +11,7 @@ import { isFinance } from "@/lib/access";
 import { fmtDate, fmtEur } from "@/lib/money";
 import { getSociety, listCards, listEvents, listMembers } from "@/lib/queries";
 import { ROLE_LABEL } from "@/lib/roles";
+import { CARD_RESTRICTION_PROFILES } from "@/lib/card-restrictions";
 
 export const metadata = { title: "Cards" };
 
@@ -26,7 +27,10 @@ export default async function CardsPage() {
   const all = listCards({ societyId: soc.id, memberId: seesAll ? undefined : actor.id, includeCanceled: true });
   const live = all.filter((c) => c.status !== "canceled");
   const members = listMembers(soc.id);
-  const withoutCard = members.filter((m) => !["member","senior_treasurer"].includes(m.role)).filter((m) => !live.some((c) => c.member_id === m.id)).map((m) => ({ id: m.id, name: m.name, role: m.role }));
+  const withoutCard = members
+    .filter((m) => !["member", "senior_treasurer"].includes(m.role) && !m.name.includes("(demo)"))
+    .filter((m) => !live.some((c) => c.member_id === m.id))
+    .map((m) => ({ id: m.id, name: m.name, role: m.role }));
   // Cancelled cards whose officer hasn't been given a new one yet.
   const replaceable = all.filter((c) => c.status === "canceled" && withoutCard.some((m) => m.id === c.member_id)).filter((c, i, xs) => xs.findIndex((x) => x.member_id === c.member_id) === i);
   const events = listEvents(soc.id, "open").map((e) => ({ id: e.id, name: e.name }));
@@ -107,8 +111,9 @@ export default async function CardsPage() {
                         "General society spending"
                       )}
                     </Row>
-                    <Row label="Review above">{fmtEur(c.per_auth_cap_cents)} per purchase</Row>
+                    <Row label="Maximum purchase">{fmtEur(c.per_auth_cap_cents)}</Row>
                     <Row label="Monthly limit">{fmtEur(c.monthly_limit_cents)}</Row>
+                    <Row label="Merchant profile">{CARD_RESTRICTION_PROFILES[c.restriction_profile].label}</Row>
                   </dl>
                   <MonthBar spent={c.month_spent} limit={c.monthly_limit_cents} />
                   {c.status === "pending" && c.error && <Notice tone="warn">{c.error}</Notice>}
@@ -117,9 +122,9 @@ export default async function CardsPage() {
                       <CardControls card={c} events={events} planActive={planActive} />
                     </div>
                   )}
-                  {c.status === "active" && c.member_id === actor.id && (
-                    <Link href={`/simulator?card=${c.id}`} className={button("secondary", "w-full")}>
-                      <CreditCard className="h-4 w-4" /> Simulate a purchase
+                  {c.status === "active" && (
+                    <Link href={`/shop?card=${c.id}`} className={button("secondary", "w-full")}>
+                      <CreditCard className="h-4 w-4" /> Try this card
                     </Link>
                   )}
                 </div>

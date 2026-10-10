@@ -3,6 +3,7 @@ import { cardMonthSpend } from "./cards";
 import { committedToOpenEvents, eventRemaining, societyBalances } from "./ledger";
 import { ROLE_ORDER } from "./roles";
 import type { Signal } from "./authorize";
+import type { CardRestrictionProfile } from "./card-restrictions";
 
 export interface SocietyRow {
   id: string;
@@ -45,6 +46,7 @@ export interface CardRow {
   status_reason: string | null;
   per_auth_cap_cents: number;
   monthly_limit_cents: number;
+  restriction_profile: CardRestrictionProfile;
   error: string | null;
   created_at: string;
 }

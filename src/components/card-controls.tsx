@@ -6,6 +6,11 @@ import { Ban, CreditCard, LoaderCircle, RefreshCw, SlidersHorizontal, Snowflake,
 import { fmtEur, parseEuroToCents } from "@/lib/money";
 import { defaultLimits, ROLE_LABEL } from "@/lib/roles";
 import { Notice, button, cx, field, label } from "./ui";
+import {
+  CARD_RESTRICTION_PROFILES,
+  CARD_RESTRICTION_PROFILE_VALUES,
+  type CardRestrictionProfile,
+} from "@/lib/card-restrictions";
 
 type EventOpt = { id: string; name: string };
 
@@ -37,7 +42,7 @@ export function CardControls({
   events,
   planActive,
 }: {
-  card: { id: string; status: string; event_id: string | null; event_status: string | null; per_auth_cap_cents: number; monthly_limit_cents: number; holder_name: string };
+  card: { id: string; status: string; event_id: string | null; event_status: string | null; per_auth_cap_cents: number; monthly_limit_cents: number; restriction_profile: CardRestrictionProfile; holder_name: string };
   events: EventOpt[];
   planActive: boolean;
 }) {
@@ -45,6 +50,7 @@ export function CardControls({
   const [editing, setEditing] = useState(false);
   const [cap, setCap] = useState(euro(card.per_auth_cap_cents));
   const [monthly, setMonthly] = useState(euro(card.monthly_limit_cents));
+  const [profile, setProfile] = useState<CardRestrictionProfile>(card.restriction_profile);
   const patch = (key: string, body: object, onOk?: () => void) => call(key, `/api/cards/${card.id}`, { method: "PATCH", body: JSON.stringify(body) }, onOk);
   const icon = (k: string, I: typeof Snowflake) => (spin(k) ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <I className="h-4 w-4" />);
   const current = card.event_id && card.event_status === "open" ? card.event_id : "";
@@ -88,27 +94,28 @@ export function CardControls({
           className="grid grid-cols-2 gap-2"
           onSubmit={(e) => {
             e.preventDefault();
-            patch("limits", { action: "limits", per_auth_cap_cents: parseEuroToCents(cap), monthly_limit_cents: parseEuroToCents(monthly) }, () => setEditing(false));
+            patch("limits", { action: "limits", per_auth_cap_cents: parseEuroToCents(cap), monthly_limit_cents: parseEuroToCents(monthly), restriction_profile: profile }, () => setEditing(false));
           }}
         >
           <div>
             <label htmlFor={`cap-${card.id}`} className={label}>
-              Purchase review threshold (€)
+              Maximum per purchase (€)
             </label>
             <input id={`cap-${card.id}`} inputMode="decimal" className={cx(field, "tabular")} value={cap} onChange={(e) => setCap(e.target.value)} />
           </div>
           <div>
             <label htmlFor={`mon-${card.id}`} className={label}>
-              Monthly review threshold (€)
+              Monthly spending limit (€)
             </label>
             <input id={`mon-${card.id}`} inputMode="decimal" className={cx(field, "tabular")} value={monthly} onChange={(e) => setMonthly(e.target.value)} />
           </div>
+          <RestrictionSelect id={`profile-${card.id}`} value={profile} onChange={setProfile} className="col-span-2" />
           <div className="col-span-2 flex justify-end gap-2">
             <button type="button" className={button("ghost")} onClick={() => setEditing(false)}>
               Cancel
             </button>
             <button type="submit" className={button("primary")} disabled={pending}>
-              {spin("limits") && <LoaderCircle className="h-4 w-4 animate-spin" />} Save thresholds
+              {spin("limits") && <LoaderCircle className="h-4 w-4 animate-spin" />} Save controls
             </button>
           </div>
         </form>
@@ -125,7 +132,7 @@ export function CardControls({
             </button>
           )}
           <button className={button("ghost")} disabled={pending} onClick={() => setEditing(true)}>
-            <SlidersHorizontal className="h-4 w-4" /> Thresholds
+            <SlidersHorizontal className="h-4 w-4" /> Spending controls
           </button>
           <button
             className={button("ghost", "text-bad")}
@@ -152,6 +159,7 @@ export function IssueCardForm({ members, events }: { members: { id: string; name
   const [cap, setCap] = useState(euro(defaultLimits(first?.role ?? "").perAuthCapCents));
   const [monthly, setMonthly] = useState(euro(defaultLimits(first?.role ?? "").monthlyLimitCents));
   const [eventId, setEventId] = useState("");
+  const [profile, setProfile] = useState<CardRestrictionProfile>("standard");
 
   if (!first) return <p className="text-sm text-ink-3">Every committee member already has a card.</p>;
 
@@ -169,7 +177,7 @@ export function IssueCardForm({ members, events }: { members: { id: string; name
         e.preventDefault();
         call("issue", "/api/cards", {
           method: "POST",
-          body: JSON.stringify({ member_id: memberId, per_auth_cap_cents: parseEuroToCents(cap), monthly_limit_cents: parseEuroToCents(monthly), event_id: eventId || null }),
+          body: JSON.stringify({ member_id: memberId, per_auth_cap_cents: parseEuroToCents(cap), monthly_limit_cents: parseEuroToCents(monthly), restriction_profile: profile, event_id: eventId || null }),
         });
       }}
     >
@@ -188,17 +196,18 @@ export function IssueCardForm({ members, events }: { members: { id: string; name
       <div className="grid grid-cols-2 gap-2">
         <div>
           <label htmlFor="issue-cap" className={label}>
-            Purchase review threshold (€)
+            Maximum per purchase (€)
           </label>
           <input id="issue-cap" inputMode="decimal" className={cx(field, "tabular")} value={cap} onChange={(e) => setCap(e.target.value)} />
         </div>
         <div>
           <label htmlFor="issue-monthly" className={label}>
-            Monthly review threshold (€)
+            Monthly spending limit (€)
           </label>
           <input id="issue-monthly" inputMode="decimal" className={cx(field, "tabular")} value={monthly} onChange={(e) => setMonthly(e.target.value)} />
         </div>
       </div>
+      <RestrictionSelect id="issue-profile" value={profile} onChange={setProfile} />
       <div>
         <label htmlFor="issue-event" className={label}>
           Spending for
@@ -218,6 +227,39 @@ export function IssueCardForm({ members, events }: { members: { id: string; name
         {pending ? "Issuing card…" : "Issue card"}
       </button>
     </form>
+  );
+}
+
+function RestrictionSelect({
+  id,
+  value,
+  onChange,
+  className,
+}: {
+  id: string;
+  value: CardRestrictionProfile;
+  onChange: (value: CardRestrictionProfile) => void;
+  className?: string;
+}) {
+  const selected = CARD_RESTRICTION_PROFILES[value];
+  return (
+    <div className={className}>
+      <label htmlFor={id} className={label}>Merchant restrictions</label>
+      <select id={id} className={field} value={value} onChange={(e) => onChange(e.target.value as CardRestrictionProfile)}>
+        {CARD_RESTRICTION_PROFILE_VALUES.map((profile) => (
+          <option key={profile} value={profile}>{CARD_RESTRICTION_PROFILES[profile].label}</option>
+        ))}
+      </select>
+      <p className="mt-1.5 text-xs leading-5 text-ink-3">{selected.description}</p>
+      <details className="mt-1 text-xs text-ink-3">
+        <summary className="cursor-pointer select-none">See category details</summary>
+        <p className="mt-1 leading-5">
+          {value === "standard"
+            ? "Blocks gambling, cash-like transactions, tobacco and adult services."
+            : `${selected.description} University-wide blocks still apply.`}
+        </p>
+      </details>
+    </div>
   );
 }
 

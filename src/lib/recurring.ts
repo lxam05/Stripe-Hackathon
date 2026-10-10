@@ -15,5 +15,11 @@ export function recordPaymentReview(a: { id: string; societyId: string; memberId
   // Consume a cadence slot even when an exception forces review: a duplicate must never bypass review.
   if (matched) db.prepare(`UPDATE recurring_mandate SET last_used_at=? WHERE id=?`).run(a.at,matched.id);
   const automatic=Boolean(matched && !a.exception);
-  db.prepare(`INSERT INTO payment_review(authorization_id,status,reason,mandate_id) VALUES(?,?,?,?)`).run(a.id,automatic ? "recurring_approved" : "pending",automatic ? "Matches an approved recurring mandate" : a.reason || "First-time or unmatched payment — treasurer review required",matched?.id ?? null);
+  const status = automatic ? "recurring_approved" : a.exception ? "pending" : "not_required";
+  const reason = automatic
+    ? "Matches an approved recurring mandate"
+    : a.exception
+      ? a.reason || "Payment exception requires treasurer review"
+      : "Routine purchase — no treasurer review required";
+  db.prepare(`INSERT INTO payment_review(authorization_id,status,reason,mandate_id) VALUES(?,?,?,?)`).run(a.id,status,reason,matched?.id ?? null);
 }

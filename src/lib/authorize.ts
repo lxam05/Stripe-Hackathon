@@ -6,6 +6,7 @@ import { UserError } from "./errors";
 import { mccInfo } from "./mcc";
 import { addDays, dublinParts, fmtEur } from "./money";
 import { resolvePolicy } from "./policy";
+import { CARD_RESTRICTION_PROFILES, profileAllowsMcc, type CardRestrictionProfile } from "./card-restrictions";
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Synchronous authorisation decision (PRD §6.3, §7). No network calls in here:
@@ -60,6 +61,7 @@ interface CardRow {
   status: string;
   per_auth_cap_cents: number;
   monthly_limit_cents: number;
+  restriction_profile: CardRestrictionProfile;
 }
 interface EventRow {
   id: string;
@@ -120,15 +122,15 @@ function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow | n
     }
   }
 
-  // Card-level spending control. With Stripe Issuing this is enforced by Stripe before
-  // our webhook is even called; the MockAdapter emulates it here.
+  // Card-level spending controls are hard stops. Stripe enforces the same controls on
+  // real Issuing cards; the local path remains authoritative for mock/demo purchases.
   if (amount > card.per_auth_cap_cents) {
     signals.push({
       id: "H5",
-      label: "Over purchase review threshold",
+      label: "Per-purchase limit exceeded",
       points: 0,
-      hard: false,
-      evidence: `${fmtEur(amount)} is over the ${fmtEur(card.per_auth_cap_cents)} review threshold; payment allowed, treasurer review required`,
+      hard: true,
+      evidence: `Declined: ${fmtEur(amount)} is over this card's ${fmtEur(card.per_auth_cap_cents)} per-purchase limit`,
     });
   }
 
@@ -136,10 +138,10 @@ function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow | n
   if (monthSpent + amount > card.monthly_limit_cents) {
     signals.push({
       id: "H6",
-      label: "Over monthly review threshold",
+      label: "Monthly limit exceeded",
       points: 0,
-      hard: false,
-      evidence: `${fmtEur(amount)} would take this card to ${fmtEur(monthSpent + amount)} this month, over its ${fmtEur(card.monthly_limit_cents)} monthly limit`,
+      hard: true,
+      evidence: `Declined: this purchase would take the card to ${fmtEur(monthSpent + amount)} this month, over its ${fmtEur(card.monthly_limit_cents)} monthly limit`,
       data: { month_spent: monthSpent, monthly_limit: card.monthly_limit_cents },
     });
   }
@@ -178,6 +180,17 @@ function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow | n
       hard: true,
       evidence: `MCC ${input.mcc} (${mcc.label}) is blocked by UCD policy`,
       data: { mcc: input.mcc },
+    });
+  }
+
+  if (policy.action !== "block" && !profileAllowsMcc(card.restriction_profile, input.mcc)) {
+    signals.push({
+      id: "H7",
+      label: "Outside card spending profile",
+      points: 0,
+      hard: true,
+      evidence: `Declined: ${mcc.label} is not included in ${CARD_RESTRICTION_PROFILES[card.restriction_profile].label}`,
+      data: { mcc: input.mcc, restriction_profile: card.restriction_profile },
     });
   }
 
@@ -356,6 +369,7 @@ const HARD_CODES: Record<string, string> = {
   H4: "blocked_mcc",
   H5: "spending_controls",
   H6: "spending_controls",
+  H7: "blocked_card_profile",
 };
 
 /**

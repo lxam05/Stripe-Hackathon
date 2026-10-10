@@ -7,6 +7,7 @@ import { getDb } from "@/lib/db";
 import { confirmCheckoutSession } from "@/lib/payments";
 import { fmtEur } from "@/lib/money";
 import { getSocietyBySlug } from "@/lib/queries";
+import { ContinueAsTreasurer } from "@/components/continue-as-treasurer";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Thank you" };
@@ -27,6 +28,7 @@ export default async function TopUpSuccess({ params, searchParams }: PageProps<"
     | { amount_cents: number; payer_name: string; status: string }
     | undefined;
   if (!t) notFound();
+  const treasurer = getDb().prepare(`SELECT id,name FROM member WHERE society_id=? AND role='treasurer' LIMIT 1`).get(soc.id) as { id: string; name: string } | undefined;
 
   return (
     <div className="min-h-screen">
@@ -43,9 +45,7 @@ export default async function TopUpSuccess({ params, searchParams }: PageProps<"
           <Link href={`/s/${soc.slug}/topup`} className="rounded-full border border-line-strong bg-surface px-4 py-2.5 text-sm hover:bg-paper-2">
             Make another top-up
           </Link>
-          <Link href="/funding" className="rounded-full bg-stone px-4 py-2.5 text-sm text-white hover:bg-stone-2">
-            Treasurer view →
-          </Link>
+          {treasurer && <ContinueAsTreasurer actorId={treasurer.id} firstName={treasurer.name.split(" ")[0]} />}
         </div>
       </main>
     </div>

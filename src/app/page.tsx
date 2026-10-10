@@ -69,7 +69,7 @@ export default async function Home() {
       <section className="mx-auto grid max-w-[1180px] gap-4 px-5 pb-16 sm:grid-cols-3 sm:px-8">
         {[
           { Icon: CreditCard, title: "Five officer cards", body: "€49/year includes five committee cards. Extra slots cost €10 for the remaining plan year. Events are optional cost centres." },
-          { Icon: ShieldCheck, title: "Spend, then review", body: "New purchases and threshold exceptions go to the treasurer. Approved recurring payments skip routine review. Any member can submit an expense." },
+          { Icon: ShieldCheck, title: "Spend, then review", body: "Routine purchases stay out of the way. Policy exceptions and contextual risks go to the treasurer. Any member can submit an expense." },
           { Icon: Sparkles, title: "Evidence for Council", body: "The senior treasurer—or treasurer if none is assigned—turns spending evidence into an editable report and next-year grant estimate." },
         ].map(({ Icon, title, body }) => (
           <div key={title} className="rounded-2xl border border-line bg-surface/80 p-5">

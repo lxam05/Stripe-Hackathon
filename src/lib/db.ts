@@ -60,6 +60,7 @@ CREATE TABLE IF NOT EXISTS card (
   status_reason TEXT,
   per_auth_cap_cents INTEGER NOT NULL,
   monthly_limit_cents INTEGER NOT NULL,
+  restriction_profile TEXT NOT NULL DEFAULT 'standard',
   error TEXT,
   created_at TEXT NOT NULL
 );
@@ -317,6 +318,13 @@ CREATE TABLE IF NOT EXISTS card_slot_purchase (
   status TEXT NOT NULL DEFAULT 'pending',
   created_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS demo_purchase_request (
+  request_key TEXT PRIMARY KEY,
+  card_id TEXT NOT NULL REFERENCES card(id),
+  product_id TEXT NOT NULL,
+  response_json TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
 `;
 
 type DB = Database.Database;
@@ -334,6 +342,9 @@ function open(): DB {
   const cardCols = db.prepare(`PRAGMA table_info(card)`).all() as { name: string }[];
   if (cardCols.length && !cardCols.some((c) => c.name === "monthly_limit_cents")) {
     db.exec(`ALTER TABLE card ADD COLUMN monthly_limit_cents INTEGER NOT NULL DEFAULT 300000`);
+  }
+  if (cardCols.length && !cardCols.some((c) => c.name === "restriction_profile")) {
+    db.exec(`ALTER TABLE card ADD COLUMN restriction_profile TEXT NOT NULL DEFAULT 'standard'`);
   }
   db.exec(SCHEMA);
   const authCols = db.prepare(`PRAGMA table_info(authorization)`).all() as { name: string }[];

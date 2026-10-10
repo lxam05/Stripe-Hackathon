@@ -5,7 +5,7 @@ import { fmtDateTime, fmtEur } from "@/lib/money";
 import type { TxnRow } from "@/lib/queries";
 import { cx, DecisionBadge } from "./ui";
 
-export function TxnList({ rows, showSociety, showEvent = true, empty }: { rows: TxnRow[]; showSociety?: boolean; showEvent?: boolean; empty?: string }) {
+export function TxnList({ rows, showSociety, showEvent = true, showCardholder, empty }: { rows: TxnRow[]; showSociety?: boolean; showEvent?: boolean; showCardholder?: boolean; empty?: string }) {
   if (!rows.length) return <p className="px-5 py-8 text-center text-sm text-ink-3">{empty ?? "No purchases yet."}</p>;
   return (
     <ul className="divide-y divide-line">
@@ -24,6 +24,7 @@ export function TxnList({ rows, showSociety, showEvent = true, empty }: { rows: 
                 <div className="truncate text-xs text-ink-3">
                   {fmtDateTime(t.created_at)} · {mccInfo(t.mcc).label}
                   {showEvent && <> · {t.event_name}</>}
+                  {showCardholder && <> · {t.member_name} · card ••{t.card_last4}</>}
                   {showSociety && <> · {t.society_name.replace(/^UCD /, "")}</>}
                 </div>
               </div>
@@ -58,6 +59,8 @@ export function prettyMerchant(s: string) {
     .replace(/\.Com\b/g, ".com")
     .replace(/\.Ie\b/g, ".ie")
     .replace(/\.De\b/g, ".de")
+    .replace(/'S\b/g, "'s")
+    .replace(/\bGamestop\b/g, "GameStop")
     .replace(/\bAtm\b/g, "ATM")
     .replace(/\bUcd\b/g, "UCD")
     .replace(/\bAv\b/g, "AV")

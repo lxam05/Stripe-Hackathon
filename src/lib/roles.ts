@@ -23,6 +23,7 @@ export const ROLE_ORDER: Record<string, number> = { treasurer: 0, senior_treasur
 export function defaultLimits(role: string) {
   if (role === "treasurer") return { perAuthCapCents: 100_000, monthlyLimitCents: 300_000 };
   if (role === "events_officer") return { perAuthCapCents: 50_000, monthlyLimitCents: 200_000 };
+  if (role === "pro") return { perAuthCapCents: 20_000, monthlyLimitCents: 50_000 };
   return { perAuthCapCents: 25_000, monthlyLimitCents: 100_000 };
 }
 

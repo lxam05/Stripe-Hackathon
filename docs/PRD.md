@@ -1,11 +1,11 @@
 # Balance — UCD society spending and accountability
-Version 2 · 10 October 2026 · implemented local sandbox prototype
+Version 3 · 10 October 2026 · implemented local sandbox prototype
 
 ## 1. Product objective
 
 Reduce the personal cash burden of running society activities while making spending review, reimbursements and annual grant reporting understandable to volunteers. Cards are assigned to committee members, not created per event. Events are optional reporting cost centres.
 
-The primary journey is: Council sets up a society and its leadership → treasurer adds members and issues committee cards → members spend or submit out-of-pocket claims → treasurer reviews new spending after payment → senior treasurer prepares the annual report → Council reviews the report, interview notes and next-year grant estimate.
+The primary journey is: Council sets up a society and its leadership → treasurer adds members and issues controlled committee cards → members spend or submit out-of-pocket claims → routine purchases stay out of the review queue while policy/risk exceptions are reviewed after payment → senior treasurer prepares the annual report → Council reviews the report, interview notes and next-year grant estimate.
 
 Sponsor top-ups, billing, the purchase simulator and risk evaluation support this journey; they are not the main product story.
 
@@ -22,13 +22,13 @@ The following is interview context supplied by the product owner, not independen
 Product decisions agreed for this prototype:
 
 - Council creates societies and assigns a required treasurer and an optional senior treasurer. Without a senior, the treasurer owns reporting.
-- Treasurer review occurs **after payment**, including over-threshold spending.
+- Treasurer review occurs **after payment** for deterministic exceptions and purchases escalated by JEV.
 - Committee members receive individual cards; ordinary members can submit expenses.
 - €49/year includes five card slots; each extra slot costs €10 for the remaining plan year.
 - Reimbursements are paid externally, then recorded in Balance. Grant decisions do not themselves transfer funds.
 - AI drafts are editable, advisory and explicitly labelled.
 
-Superseded assumptions: one shared treasurer card, one card per event, event dates as a hard spending gate, threshold crossing as automatic decline, risk score alone as a decline, misuse review as a refund, and sponsor acquisition as the primary workflow.
+Superseded assumptions: one shared treasurer card, one card per event, event dates as a hard spending gate, risk score alone as a decline, misuse review as a refund, and sponsor acquisition as the primary workflow.
 
 Still to validate with UCD: exact role appointment and handover rules; who may use discretion and at what value; official MCC restrictions; reporting template and academic-year boundary; receipt retention and privacy policy; approval of a treasurer's own claims; grant eligibility for fees; lawful card issuance and funding architecture. Sandbox configuration is not represented as official UCD policy.
 
@@ -38,7 +38,7 @@ Still to validate with UCD: exact role appointment and handover rules; who may u
 | --- | --- |
 | Member | Submit own expense with receipt, track own claim and review status |
 | Committee cardholder / auditor | Member permissions plus personal card spending |
-| Treasurer | Add members, issue/manage committee cards, configure review thresholds, review first-time and exception payments, approve/revoke recurring mandates, review claims and record external repayment |
+| Treasurer | Add members, issue/manage committee cards, configure hard limits and merchant profiles, review exception payments, approve/revoke recurring mandates, review claims and record external repayment |
 | Senior treasurer | Read society spending, claims and evidence; prepare, edit and submit annual reports; no routine card/payment approval powers |
 | Treasurer when no senior exists | Also owns annual report preparation and submission |
 | Societies Council admin | Create societies, assign/change leadership, view society evidence, comment on/return/approve submitted reports and record approved grant amount |
@@ -49,15 +49,15 @@ No society member may access another society's protected records or receipts. Co
 
 ### Network decision
 
-A synchronous SQLite transaction checks active card/plan/slot entitlement, available society funds and configured blocked MCCs. These can decline a purchase. No model is called in this path. A successful authorization reserves a hold; capture converts the hold into recorded spending.
+A synchronous SQLite transaction checks active card/plan/slot entitlement, available society funds, per-purchase/monthly limits, the card's merchant profile and configured global MCC blocks. These can decline a purchase. No model is called in this path. A successful authorization reserves a hold; capture converts the hold into recorded spending.
 
-Purchase and monthly card thresholds are **soft review thresholds**. Event dates and event budget overruns are advisory. A high aggregate risk score alone does not decline spending. Event budgets do not ring-fence funds from other society purchases.
+Purchase and monthly card limits are **hard authorization limits**, checked atomically. Stripe Issuing receives matching `per_authorization` and `monthly` controls. Event dates and event budget overruns remain advisory. A high aggregate risk score alone does not decline spending. Event budgets do not ring-fence funds from other society purchases.
 
-Legacy database column names `per_auth_cap_cents` and `monthly_limit_cents` remain for compatibility but now store review thresholds. New Stripe cards do not receive those values as hard network spending limits. Saving thresholds on an existing Stripe card clears the legacy amount limits; previously issued remote cards require that explicit synchronization before their controls match the new semantics.
+Legacy database column names `per_auth_cap_cents` and `monthly_limit_cents` remain for compatibility and now store hard limits. Every card also has a restriction profile: `standard`, `event_essentials` or `trip`. Restricted profiles are allowlists; unknown categories are blocked and global gambling, cash-like, tobacco and adult-service blocks can never be weakened.
 
 ### Post-payment review
 
-Every approved first-time/unmatched payment gets an immediate payment-review row, independent of AI availability. The treasurer can approve spending, request evidence or mark misuse with a recovery note. Reviews do not reverse holds, refund settled payments or claim money has been recovered. Card freeze/cancellation is a separate future-use control.
+Every approved payment gets an immediate review-state row, independent of AI availability. Routine policy-compliant purchases are `not_required`; deterministic exceptions are `pending`, and JEV may escalate a routine purchase to `pending`. The treasurer can approve spending, request evidence or mark misuse with a recovery note. Reviews do not reverse holds, refund settled payments or claim money has been recovered. Card freeze/cancellation is a separate future-use control.
 
 A payment may be authorised but not yet captured when it appears in the queue. UI distinguishes network status from the treasurer's review. The optional risk flag is a separate investigation record, not a replacement for routine payment review.
 
@@ -65,7 +65,7 @@ A payment may be authorised but not yet captured when it appears in the queue. U
 
 An initial approved payment can create an explicit mandate scoped to society, cardholder, merchant identity, currency, amount range, cadence and expiry. Default form suggestions: ±10%, monthly, end of the academic year; treasurer can edit them.
 
-Supported cadence tolerances: weekly 6–8 days, monthly 25–35 days, yearly 350–380 days since the last matched payment. Only one payment consumes a cadence slot. Out-of-range, early/late, duplicate, different-currency or different-cardholder payments return to review. Revoked/expired mandates never bypass review. Threshold, category, timing, duplicate, velocity, foreign-merchant and AI risk exceptions can still require review.
+Supported cadence tolerances: weekly 6–8 days, monthly 25–35 days, yearly 350–380 days since the last matched payment. Only one payment consumes a cadence slot. Unmatched routine purchases remain `not_required`; duplicate, category, timing, velocity, foreign-merchant and AI risk exceptions still require review. Revoked/expired mandates never claim an automatic match.
 
 When no stable network merchant identifier is available, use an exact normalized descriptor + MCC + country. This is deliberately conservative but is not proof of merchant identity. Production must use and validate a stable identifier wherever available. Mandates authorize review treatment, not merchant-initiated debit collection.
 
@@ -102,7 +102,7 @@ State: draft → submitted → returned for revision → submitted → approved.
 
 JEV remains on OpenRouter through its Decisions API using TypeSafe's Jev model. Risk inputs use member pseudonyms, not member emails or receipt files. Merchant text is untrusted. Typed decision answers are validated; invalid responses retry then fall back to rules. Balance builds explanations from recorded fields and includes evidence checks and source labels.
 
-Risk flags can raise attention after recurring matching. Auto-freeze requires agreement between scored rules and confident high-risk AI, and affects future use only. A soft threshold alone has zero risk points and cannot independently trigger an auto-freeze. Legitimate emergency substitutions should be explained, not treated as automatic misuse.
+Risk flags can raise attention after recurring matching. Auto-freeze requires agreement between scored rules and confident high-risk AI, and affects future use only. A lower-confidence JEV concern may create a cautious human review but never auto-freezes a card. Legitimate emergency substitutions should be explained, not treated as automatic misuse.
 
 Grant drafting uses aggregate financial evidence only, with a human review requirement. AI narratives may still be inaccurate; ledger totals are authoritative.
 
@@ -110,14 +110,14 @@ Grant drafting uses aggregate financial evidence only, with a human review requi
 
 Primary: Overview, Committee cards, Payment reviews, Expenses, Grant report, Members.
 Supporting: Events/cost centres, Transactions, Funding, Plan.
-Demo tools: Purchase simulator, Council-only Evaluation.
+Demo tools: two-item Campus marketplace, Purchase simulator, Council-only Evaluation.
 Council: society onboarding/leadership and submitted grant reports, with read-only spending oversight.
 
 Each flow must expose ownership, state, empty/error feedback and what the next action actually does. Never call an approval a refund or a report estimate an awarded grant.
 
 ## 10. Architecture and migrations
 
-Next.js 16 App Router, React, TypeScript, Tailwind, SQLite integer-cent ledger. Existing risk/card/Checkout modules are retained. New workflow modules add payment reviews, mandates, expenses/receipts, report snapshots and paid card-slot entitlements.
+Next.js 16 App Router, React, TypeScript, Tailwind, SQLite integer-cent ledger. Existing risk/card/Checkout modules are retained. Workflow modules add payment reviews, mandates, expenses/receipts, report snapshots and paid card-slot entitlements. The demo marketplace owns price, merchant and MCC data server-side and accepts idempotency keys.
 
 Schema migration is additive; no implicit database reset. Old synthetic history is labelled imported history, not retroactively claimed to have been individually approved. Explicit demo reset remains Council-only and destructive by confirmation. Private `.env`, database files, build output and node_modules remain ignored.
 
@@ -128,7 +128,8 @@ Mutation routes enforce actor/tenant checks independently of navigation. This is
 - Required treasurer, optional senior and explicit reporting fallback.
 - Cross-society/role mutation and receipt access denied.
 - Five base slots, paid extras, expiry, cancellation release, frozen/pending counting.
-- First-time and threshold purchases succeed with immediate review; actual safety declines remain.
+- Hard card-limit boundaries, matching Stripe controls, profile allowlists and immutable global blocks.
+- Routine purchases remain out of review; deterministic exceptions and JEV escalation enter it.
 - Recurring scope/cadence/expiry/revocation and exception handling.
 - Review of misuse does not alter the ledger.
 - Receipt-backed claims, reasoned decline and exactly-once external repayment.
@@ -140,13 +141,12 @@ The automated results are generated into `data/test-results.json`; do not claim 
 
 ## 12. Demo sequence
 
-1. Treasurer: see pending reviews and members awaiting reimbursement.
-2. Committee cardholder: simulate a paid purchase above a review threshold; it succeeds if funded and queues review.
-3. Treasurer: approve a first recurring payment with a bounded mandate; demonstrate a matching repeat and an exception.
-4. Member: submit an emergency expense and receipt; treasurer approves, then records an external repayment once.
-5. Senior treasurer: inspect the annual evidence, edit the forecast and submit to Council. Demonstrate fallback ownership in a society without a senior.
-6. Council: record interview notes, return a report for revision or approve a grant amount without crediting the ledger.
-7. Optional: show €10 extra-card checkout, sponsor funding and JEV risk evaluation.
+1. Top up UCD Drama Society by €250 and continue from the success page as Aoife, treasurer.
+2. Issue Orla the fifth officer card with a €200 per-purchase limit, €500 monthly limit and Standard society spending profile.
+3. Open the Campus marketplace from Orla's card and buy the €18.40 pizza.
+4. Show the receipt's cardholder, masked card and exact society balance movement, then show Orla's increased monthly spend on the dashboard.
+5. Open Cian's existing €149.99 GameStop purchase and show the real JEV assessment and pending treasurer review.
+6. Optional: reproduce the console purchase in the marketplace or use the simulator for broader rules/failure cases.
 
 ## 13. Non-goals and launch gates
 

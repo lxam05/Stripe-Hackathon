@@ -86,7 +86,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             )}
             {editable && (
               <p className="mt-3 text-xs text-ink-3">
-                A card spends for one event at a time. Manage review thresholds on <Link href="/cards" className="underline hover:text-ink">Officer cards</Link>.
+                A card spends for one event at a time. Manage its limits and merchant profile on <Link href="/cards" className="underline hover:text-ink">Officer cards</Link>.
               </p>
             )}
           </Panel>

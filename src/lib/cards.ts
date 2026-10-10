@@ -1,12 +1,15 @@
-import type Stripe from "stripe";
 import { env } from "./env";
 import { audit, getDb, newId, nowIso } from "./db";
-import { mccInfo } from "./mcc";
 import { dublinParts, dublinToIso, fmtEur } from "./money";
 import { UserError } from "./errors";
 import { globalBlockedMccs } from "./policy";
 import { CARDS_PER_SOCIETY, MAX_MONTHLY_LIMIT_CENTS, ROLE_LABEL } from "./roles";
 import { getStripe } from "./stripe";
+import {
+  isCardRestrictionProfile,
+  stripeCategoryControls,
+  type CardRestrictionProfile,
+} from "./card-restrictions";
 
 // Officer cards. Each society gets up to CARDS_PER_SOCIETY live cards, one per committee
 // member. A card can point at one open event at a time; purchases then come out of that
@@ -33,6 +36,7 @@ interface IssueParams {
   societyId: string;
   perAuthCapCents: number;
   monthlyLimitCents: number;
+  restrictionProfile: CardRestrictionProfile;
 }
 
 interface CardNetwork {
@@ -40,7 +44,7 @@ interface CardNetwork {
   ensureCardholder(m: MemberRow): Promise<string>;
   createCard(cardholderId: string, p: IssueParams): Promise<{ id: string; last4: string; expMonth: number; expYear: number }>;
   setStatus(stripeCardId: string | null, status: Exclude<CardStatus, "pending">): Promise<void>;
-  setLimits(stripeCardId: string | null, perAuthCapCents: number, monthlyLimitCents: number): Promise<void>;
+  setControls(stripeCardId: string | null, p: Pick<IssueParams, "perAuthCapCents" | "monthlyLimitCents" | "restrictionProfile">): Promise<void>;
 }
 
 const mockNetwork: CardNetwork = {
@@ -54,17 +58,22 @@ const mockNetwork: CardNetwork = {
     return { id: newId("mock_ic"), last4, expMonth: d.getMonth() + 1, expYear: d.getFullYear() + 3 };
   },
   async setStatus() {},
-  async setLimits() {},
+  async setControls() {},
 };
 
 // EU cards need a phone on the cardholder for 3-D Secure; members don't store one, so the
 // sandbox uses the UCD switchboard.
 const SANDBOX_CARDHOLDER_PHONE = "+35317167777";
 
-// The treasurer's caps are review thresholds (authorize.ts H5/H6): over-cap purchases go
-// through and get flagged, so they must not become hard Stripe limits. Stripe only enforces
-// the Societies Office ceiling; setting it also replaces Stripe's default 500 USD/day limit.
-const STRIPE_BACKSTOP_LIMITS = [{ amount: MAX_MONTHLY_LIMIT_CENTS, interval: "monthly" as const }];
+export function stripeSpendingControls(p: { perAuthCapCents: number; monthlyLimitCents: number; restrictionProfile: CardRestrictionProfile }) {
+  return {
+    ...stripeCategoryControls(p.restrictionProfile, globalBlockedMccs()),
+    spending_limits: [
+      { amount: p.perAuthCapCents, interval: "per_authorization" as const },
+      { amount: p.monthlyLimitCents, interval: "monthly" as const },
+    ],
+  };
+}
 
 const stripeNetwork: CardNetwork = {
   name: "stripe",
@@ -95,18 +104,12 @@ const stripeNetwork: CardNetwork = {
     return ch.id;
   },
   async createCard(cardholderId, p) {
-    const blocked = globalBlockedMccs()
-      .map((c) => mccInfo(c).stripe)
-      .filter(Boolean) as Stripe.Issuing.CardCreateParams.SpendingControls.BlockedCategory[];
     const card = await getStripe().issuing.cards.create({
       cardholder: cardholderId,
       currency: "eur",
       type: "virtual",
       status: "active",
-      spending_controls: {
-        blocked_categories: blocked,
-        spending_limits: STRIPE_BACKSTOP_LIMITS,
-      },
+      spending_controls: stripeSpendingControls(p),
       metadata: { society_id: p.societyId, member_id: p.memberId, role: p.role, balance_env: "sandbox" },
     });
     return { id: card.id, last4: card.last4, expMonth: card.exp_month, expYear: card.exp_year };
@@ -115,11 +118,10 @@ const stripeNetwork: CardNetwork = {
     if (!stripeCardId) return;
     await getStripe().issuing.cards.update(stripeCardId, { status });
   },
-  async setLimits(stripeCardId) {
+  async setControls(stripeCardId, p) {
     if (!stripeCardId) return;
-    // Thresholds live in our DB; this just moves legacy cards off old hard limits onto the backstop.
     await getStripe().issuing.cards.update(stripeCardId, {
-      spending_controls: { spending_limits: STRIPE_BACKSTOP_LIMITS },
+      spending_controls: stripeSpendingControls(p),
     });
   },
 };
@@ -164,8 +166,8 @@ export async function syncSeededCardsToStripe(log: (s: string) => void = () => {
   if (stale.length) log(`cancelled ${stale.length} Stripe cards from earlier seeds`);
 
   const rows = db
-    .prepare(`SELECT id, society_id, member_id, status, per_auth_cap_cents, monthly_limit_cents FROM card WHERE network='mock' AND status != 'canceled'`)
-    .all() as (Pick<CardRecord, "id" | "society_id" | "member_id" | "status" | "per_auth_cap_cents" | "monthly_limit_cents">)[];
+    .prepare(`SELECT id, society_id, member_id, status, per_auth_cap_cents, monthly_limit_cents, restriction_profile FROM card WHERE network='mock' AND status != 'canceled'`)
+    .all() as (Pick<CardRecord, "id" | "society_id" | "member_id" | "status" | "per_auth_cap_cents" | "monthly_limit_cents" | "restriction_profile">)[];
   let issued = 0;
   await inBatches(rows, async (row) => {
     try {
@@ -178,6 +180,7 @@ export async function syncSeededCardsToStripe(log: (s: string) => void = () => {
         societyId: row.society_id,
         perAuthCapCents: row.per_auth_cap_cents,
         monthlyLimitCents: row.monthly_limit_cents,
+        restrictionProfile: row.restriction_profile,
       });
       if (row.status === "inactive") await stripeNetwork.setStatus(c.id, "inactive");
       db.prepare(`UPDATE card SET network='stripe', stripe_card_id=?, last4=?, exp_month=?, exp_year=? WHERE id=?`).run(c.id, c.last4, c.expMonth, c.expYear, row.id);
@@ -203,6 +206,7 @@ interface CardRecord {
   status: CardStatus;
   per_auth_cap_cents: number;
   monthly_limit_cents: number;
+  restriction_profile: CardRestrictionProfile;
 }
 
 function getCard(cardId: string) {
@@ -270,6 +274,7 @@ export async function issueCard(cardId: string, actor: string) {
       societyId: pending.society_id,
       perAuthCapCents: pending.per_auth_cap_cents,
       monthlyLimitCents: pending.monthly_limit_cents,
+      restrictionProfile: pending.restriction_profile,
     });
     db.prepare(
       `UPDATE card SET network=?, stripe_card_id=?, last4=?, exp_month=?, exp_year=?, status='active', error=NULL WHERE id=?`,
@@ -289,6 +294,7 @@ export interface NewCardInput {
   memberId: string;
   perAuthCapCents: number;
   monthlyLimitCents: number;
+  restrictionProfile?: CardRestrictionProfile;
   eventId?: string | null;
 }
 
@@ -296,6 +302,8 @@ export interface NewCardInput {
 export async function createOfficerCard(input: NewCardInput, actor: string) {
   const db = getDb();
   validateLimits(input.perAuthCapCents, input.monthlyLimitCents);
+  const restrictionProfile = input.restrictionProfile ?? "standard";
+  if (!isCardRestrictionProfile(restrictionProfile)) throw new UserError("validation", "Choose a valid card spending profile.");
   const soc = db.prepare(`SELECT plan_status FROM society WHERE id=?`).get(input.societyId) as { plan_status: string } | undefined;
   if (!soc) throw new UserError("unknown_society", "Society not found", 404);
   if (soc.plan_status !== "active") throw new UserError("plan_required", "Subscribe to the Society Plan to issue officer cards.", 402);
@@ -314,9 +322,9 @@ export async function createOfficerCard(input: NewCardInput, actor: string) {
     const existing = db.prepare(`SELECT id FROM card WHERE member_id=? AND status != 'canceled'`).get(member.id);
     if (existing) throw new UserError("card_exists", `${member.name} already has a card. Each officer holds one.`);
     db.prepare(
-      `INSERT INTO card (id, society_id, member_id, event_id, network, last4, exp_month, exp_year, status, per_auth_cap_cents, monthly_limit_cents, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
-    ).run(cardId, input.societyId, member.id, input.eventId ?? null, "mock", "····", 0, 0, "pending", input.perAuthCapCents, input.monthlyLimitCents, nowIso());
+      `INSERT INTO card (id, society_id, member_id, event_id, network, last4, exp_month, exp_year, status, per_auth_cap_cents, monthly_limit_cents, restriction_profile, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    ).run(cardId, input.societyId, member.id, input.eventId ?? null, "mock", "····", 0, 0, "pending", input.perAuthCapCents, input.monthlyLimitCents, restrictionProfile, nowIso());
   }).immediate();
   audit(actor, "card.created", cardId, { member_id: member.id, role: ROLE_LABEL[member.role] ?? member.role });
   const issued = await issueCard(cardId, actor);
@@ -339,13 +347,32 @@ export function assignCard(cardId: string, eventId: string | null, actor: string
   audit(actor, eventId ? "card.assigned" : "card.unassigned", cardId, { event_id: eventId });
 }
 
-export async function updateCardLimits(cardId: string, perAuthCapCents: number, monthlyLimitCents: number, actor: string) {
+export async function updateCardLimits(
+  cardId: string,
+  perAuthCapCents: number,
+  monthlyLimitCents: number,
+  actor: string,
+  restrictionProfile?: CardRestrictionProfile,
+) {
   validateLimits(perAuthCapCents, monthlyLimitCents);
   const card = getCard(cardId);
+  const profile = restrictionProfile ?? card.restriction_profile;
+  if (!isCardRestrictionProfile(profile)) throw new UserError("validation", "Choose a valid card spending profile.");
   if (card.status === "canceled") throw new UserError("validation", "This card is cancelled.");
-  if (card.network === "stripe") await stripeNetwork.setLimits(card.stripe_card_id, perAuthCapCents, monthlyLimitCents);
-  getDb().prepare(`UPDATE card SET per_auth_cap_cents=?, monthly_limit_cents=? WHERE id=?`).run(perAuthCapCents, monthlyLimitCents, cardId);
-  audit(actor, "card.limits_changed", cardId, { per_auth_cap_cents: perAuthCapCents, monthly_limit_cents: monthlyLimitCents });
+  if (card.network === "stripe") {
+    await stripeNetwork.setControls(card.stripe_card_id, { perAuthCapCents, monthlyLimitCents, restrictionProfile: profile });
+  }
+  getDb().prepare(`UPDATE card SET per_auth_cap_cents=?, monthly_limit_cents=?, restriction_profile=? WHERE id=?`).run(
+    perAuthCapCents,
+    monthlyLimitCents,
+    profile,
+    cardId,
+  );
+  audit(actor, "card.controls_changed", cardId, {
+    per_auth_cap_cents: perAuthCapCents,
+    monthly_limit_cents: monthlyLimitCents,
+    restriction_profile: profile,
+  });
 }
 
 /** Issue a replacement for a cancelled card: same officer, limits and event. */
@@ -359,6 +386,7 @@ export async function replaceCard(cardId: string, actor: string) {
       memberId: old.member_id,
       perAuthCapCents: old.per_auth_cap_cents,
       monthlyLimitCents: old.monthly_limit_cents,
+      restrictionProfile: old.restriction_profile,
       eventId: ev?.status === "open" ? old.event_id : null,
     },
     actor,

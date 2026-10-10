@@ -6,7 +6,7 @@ import { postEntry, societyBalances } from "./ledger";
 import { seedGlobalPolicy, setPolicy } from "./policy";
 import { addDays, dublinToIso } from "./money";
 import type { EventType } from "./mcc";
-import { PLAN_LAPSED_REASON, syncSeededCardsToStripe } from "./cards";
+import { syncSeededCardsToStripe } from "./cards";
 import { defaultLimits, MAX_MONTHLY_LIMIT_CENTS, type Role } from "./roles";
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ const SOCIETIES: SocietySpec[] = [
     slug: "drama",
     category: "performing_arts",
     blurb: "Shows, workshops and the best opening nights on campus.",
-    plan: "expired",
+    plan: "active",
     members: [
       ["Aoife Byrne", "treasurer"],
       ["Cian Murphy", "events_officer"],
@@ -464,7 +464,12 @@ export async function seed(opts: { log?: (s: string) => void } = {}): Promise<Se
 
   // ── Officer cards: one per committee member, limits sized from what they buy ──
   const spec = (societyId: string) => SOCIETIES.find((x) => x.id === societyId)!;
-  const holderOf = (ev: PlannedEvent, p?: Planned) => memberIds[ev.societyId][Math.min(p?.holderIdx ?? ev.holderIdx, spec(ev.societyId).members.length - 1)];
+  const holderOf = (ev: PlannedEvent, p?: Planned) => {
+    const requested = Math.min(p?.holderIdx ?? ev.holderIdx, spec(ev.societyId).members.length - 1);
+    // Keep Orla card-free for the live card-issuing walkthrough.
+    const index = ev.societyId === "soc_drama" && requested === 4 ? 3 : requested;
+    return memberIds[ev.societyId][index];
+  };
   const cardOf = (memberId: string) => memberId.replace(/^mem_/, "card_");
   const roleOf = new Map(SOCIETIES.flatMap((s) => s.members.map(([, role], i) => [memberIds[s.id][i], role] as const)));
   const caps = new Map<string, number>();
@@ -499,6 +504,7 @@ export async function seed(opts: { log?: (s: string) => void } = {}): Promise<Se
   }
   for (const s of SOCIETIES) {
     for (const memberId of memberIds[s.id]) {
+      if (s.id === "soc_drama" && memberId === "mem_drama_5") continue;
       const role = roleOf.get(memberId)!;
       const busiest = Math.max(0, ...(monthly.get(memberId)?.values() ?? []));
       const cap = caps.get(memberId)!;
@@ -631,15 +637,30 @@ export async function seed(opts: { log?: (s: string) => void } = {}): Promise<Se
   for (const ev of events.filter((e) => e.current)) {
     db.prepare(`UPDATE card SET event_id=? WHERE id=?`).run(eventIdOf(ev), cardOf(holderOf(ev)));
   }
-  // Drama's plan lapsed on 30 Sept, so its officer cards are frozen until it renews.
-  db.prepare(`UPDATE card SET status='inactive', status_reason=? WHERE society_id='soc_drama'`).run(PLAN_LAPSED_REASON);
-
   // Drama's 2025/26 year ended: unspent grant returned, €180 carried over for 2026/27.
   const drama = societyBalances("soc_drama");
   const carry = 18_000;
   if (drama.available > carry) {
     postEntry({ societyId: "soc_drama", type: "transfer_out", amountCents: drama.available - carry, refType: "year_end", refId: "2025-26", memo: "Year-end: unspent grant returned to Societies Office", at: dublinToIso("2026-09-30", "17:00") });
   }
+
+  // The prepared demo's second card already contains a contextual mismatch. The normal
+  // seed stores a clearly labelled rules fallback; `npm run demo:prepare` replaces the
+  // latest assessment with a real OpenRouter-backed JEV result and verifies the flag.
+  const gameStop = decideAuthorization({
+    cardId: "card_drama_2",
+    amountCents: 14_999,
+    merchantName: "GAMESTOP PS5 CONSOLE",
+    mcc: "5945",
+    merchantCity: "Dublin",
+    merchantCountry: "IE",
+    at: dublinToIso("2026-10-09", "14:10"),
+    source: "seed",
+  });
+  if (!gameStop.approved || !gameStop.authorizationId) throw new Error(`Demo GameStop purchase was declined: ${gameStop.declineReason}`);
+  captureAuthorization(gameStop.authorizationId, 14_999, dublinToIso("2026-10-09", "14:12"));
+  await assessAuthorization(gameStop.authorizationId, { skipJev: true, actor: "seed" });
+  db.prepare(`UPDATE risk_assessment SET created_at=? WHERE authorization_id=?`).run(dublinToIso("2026-10-09", "14:13"), gameStop.authorizationId);
 
   const summary: SeedSummary = {
     societies: SOCIETIES.length,

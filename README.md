@@ -51,23 +51,27 @@ Rules live in `src/lib/access.ts` and are enforced on every page and API route, 
 
 ## Main demo
 
-- Choose the Drama treasurer to view payment reviews, card controls and outstanding claims.
+- Run `npm run demo:prepare` to reset the showcase fixture and verify that Cian's €149.99 GameStop purchase has a completed, real JEV assessment and an open review. The command fails clearly if OpenRouter falls back to rules or JEV does not escalate it.
+- Top up Drama by €250, then use the success-page action to continue as Aoife.
+- Issue Orla the fifth officer card with a €200 per-purchase limit, €500 monthly limit and Standard society spending profile.
+- Use “Try this card” to buy the €18.40 pizza in the two-item Campus marketplace; its receipt shows the exact balance movement and Orla's card attribution.
+- Return to Aoife's dashboard and open Cian's GameStop payment to show JEV's contextual risk review.
 - Choose Jamie (member) to submit a receipt-backed claim. Alex (auditor) has a fictional €1,000 approved claim awaiting repayment.
 - The treasurer approves/declines expenses and records repayment made externally. “Mark repaid” does not send money.
 - Choose Evelyn (senior treasurer) to edit the annual report and forecast; submit to Council.
 - Choose Council to create societies, assign required/optional leadership, review reports, record interview notes and approve grant amounts.
 - Societies without a senior treasurer use their treasurer as reporting owner.
-- Use the simulator for first-time, threshold and recurring purchase cases. Drama's legacy demo plan may need renewal before card spending.
+- Use the simulator for broader policy, recurring-payment and failure-path cases.
 
 ## Important behavior
 
-Cards belong to committee members across events. Events are optional cost centres; their budgets and dates are advisory. Purchase/monthly thresholds trigger **review after payment**, not network declines. Active card/plan/capacity, available funds and blocked MCC policy remain hard checks.
+Cards belong to committee members across events. Events are optional cost centres; their budgets and dates are advisory. Per-purchase and monthly card limits are hard, atomic authorization checks. Active card/plan/capacity, available funds, the selected merchant profile and university-wide blocked categories are also hard checks.
 
 Recurring mandates are explicit: cardholder + merchant identity + currency + amount range + cadence + expiry. They skip routine review, not safety/risk exceptions. Misuse review never refunds or reverses a payment.
 
 €49/year includes five card slots. A €10 extra slot is valid for the remaining plan year and expires at renewal, with no automatic renewal. Cancelled cards release slots; pending/frozen cards count. Extra-card revenue is not society funding.
 
-Card caps are review thresholds, not hard limits. Stripe cards carry only a €10,000 monthly backstop (the Societies Office ceiling), which also replaces Stripe's default 500 USD/day limit. Saving thresholds on an older remote card moves it onto that backstop.
+Every card has a human-readable merchant profile: Standard society spending, Event essentials only or Society trip. Global blocks can never be relaxed. Stripe Issuing receives the same `per_authorization`, `monthly` and category controls used by the local authorization engine.
 
 ## Integrations
 
@@ -75,7 +79,7 @@ Stripe uses a signature-verified endpoint at `/api/webhooks/stripe`. Webhooks ar
 
 Stripe Issuing demo (`ISSUING_MODE=stripe`):
 
-1. `npm run seed`: gives every seeded officer one Stripe cardholder and one virtual card, cancels cards from earlier seeds, and tops up the sandbox Issuing balance. Cardholders are people, not cards: reseeding and replacement cards reuse the same `ich_…`.
+1. `npm run seed`: backs seeded officer cards with Stripe cardholders and virtual cards, leaves Drama's fifth slot open for Orla, cancels cards from earlier seeds, and tops up the sandbox Issuing balance. Cardholders are people, not cards: reseeding and replacement cards reuse the same `ich_…`.
 2. `npm run stripe:listen` in a second terminal.
 3. `npm run dev`. The purchase simulator fires real sandbox authorisations through Stripe test helpers, and the webhook approves or declines them in real time. The time override still applies.
 

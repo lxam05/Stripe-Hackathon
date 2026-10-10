@@ -24,11 +24,12 @@ async function main() {
   const { decideAuthorization, captureAuthorization, releaseAuthorization } = await import("../src/lib/authorize");
   const { assessAuthorization } = await import("../src/lib/assess");
   const { createEvent } = await import("../src/lib/events");
-  const { assignCard, createOfficerCard, setCardStatus, updateCardLimits } = await import("../src/lib/cards");
-  const { committedToOpenEvents, eventRemaining, reconcileAll, societyBalances } = await import("../src/lib/ledger");
-  const { activatePlan, createTopUpCheckout, fulfilTopUp, cancelTopUp, validateTopUpAmount, UserError } = await import("../src/lib/payments");
+  const { assignCard, createOfficerCard, setCardStatus, updateCardLimits, stripeSpendingControls } = await import("../src/lib/cards");
+  const { committedToOpenEvents, eventRemaining, reconcileAll, societyBalances, postEntry } = await import("../src/lib/ledger");
+  const { createTopUpCheckout, fulfilTopUp, cancelTopUp, validateTopUpAmount, UserError } = await import("../src/lib/payments");
   const { JevOutput, buildContext } = await import("../src/lib/jev");
   const { dublinToIso, addDays } = await import("../src/lib/money");
+  const { performDemoPurchase } = await import("../src/lib/demo-purchases");
 
   // Keep the matrix deterministic and offline unless explicitly asked.
   const realKey = env.openRouterKey;
@@ -46,11 +47,55 @@ async function main() {
     authId ? (db.prepare(`SELECT severity, status FROM flag WHERE authorization_id=?`).get(authId) as { severity: string } | undefined) : undefined;
   const has = (signals: { id: string }[], id: string) => signals.some((s) => s.id === id);
 
-  // ── Setup: Drama renews the plan (its 5 officer cards wake up), gets a €250 sponsor
-  // top-up and creates Pizza Night with Cian's events-officer card on it ──
-  await activatePlan("soc_drama", { customerId: null, subscriptionId: null, renewsAt: null, source: "test" });
+  // ── Setup: Drama starts active with four cards and one issueable slot for Orla. ──
   const today = new Date().toISOString().slice(0, 10);
   const eventDate = addDays(today, 4);
+  const startingCards = (db.prepare(`SELECT COUNT(*) n FROM card WHERE society_id='soc_drama' AND status='active'`).get() as { n: number }).n;
+  const issuedOrla = await createOfficerCard({
+    societyId: "soc_drama",
+    memberId: "mem_drama_5",
+    perAuthCapCents: 20_000,
+    monthlyLimitCents: 50_000,
+    restrictionProfile: "standard",
+  }, "test");
+  const orla = issuedOrla.cardId;
+  check("O4", "Ordinary", "Drama has one card slot and Orla receives it", "4 active, then Orla's fifth card", `${startingCards} before, ${issuedOrla.issued.ok ? "issued" : "failed"}`, startingCards === 4 && issuedOrla.issued.ok);
+  postEntry({ societyId: "soc_drama", type: "topup", amountCents: 100_000, refType: "test", refId: "control-boundaries", at: dublinToIso(today, "08:55") });
+
+  const limitAt = (minute: number) => dublinToIso(today, `09:${String(minute).padStart(2, "0")}`);
+  const exactPurchase = decideAuthorization({ cardId: orla, amountCents: 20_000, merchantName: "LIMIT TEST A", mcc: "5814", merchantCountry: "IE", at: limitAt(0) });
+  releaseAuthorization(exactPurchase.authorizationId!);
+  const overPurchase = decideAuthorization({ cardId: orla, amountCents: 20_001, merchantName: "LIMIT TEST B", mcc: "5814", merchantCountry: "IE", at: limitAt(1) });
+  check("C1", "Boundary", "€200 card limit, then one cent over", "€200 approved; €200.01 declined", `${exactPurchase.approved}/${overPurchase.declineCode}`, exactPurchase.approved && !overPurchase.approved && has(overPurchase.signals, "H5"));
+  const monthParts = [20_000, 20_000, 10_000].map((amount, index) => decideAuthorization({ cardId: orla, amountCents: amount, merchantName: `MONTH LIMIT ${index}`, mcc: "5814", merchantCountry: "IE", at: limitAt(10 + index) }));
+  const overMonth = decideAuthorization({ cardId: orla, amountCents: 1, merchantName: "MONTH LIMIT OVER", mcc: "5814", merchantCountry: "IE", at: limitAt(13) });
+  check("C2", "Boundary", "€500 monthly limit, then one cent over", "Exactly €500 approved; next cent declined", `${monthParts.every((p) => p.approved)}/${overMonth.declineCode}`, monthParts.every((p) => p.approved) && !overMonth.approved && has(overMonth.signals, "H6"));
+  for (const purchase of monthParts) releaseAuthorization(purchase.authorizationId!);
+
+  await updateCardLimits(orla, 20_000, 50_000, "test", "event_essentials");
+  const essentialsPizza = decideAuthorization({ cardId: orla, amountCents: 1_840, merchantName: "PROFILE PIZZA", mcc: "5814", merchantCountry: "IE", at: limitAt(20) });
+  const essentialsGames = decideAuthorization({ cardId: orla, amountCents: 14_999, merchantName: "PROFILE GAMES", mcc: "5945", merchantCountry: "IE", at: limitAt(21) });
+  const essentialsUnknown = decideAuthorization({ cardId: orla, amountCents: 100, merchantName: "PROFILE UNKNOWN", mcc: "9998", merchantCountry: "IE", at: limitAt(22) });
+  check("C3", "Invariant", "Event essentials is an allowlist", "Food approved; games and unknown categories declined", `${essentialsPizza.approved}/${essentialsGames.declineCode}/${essentialsUnknown.declineCode}`, essentialsPizza.approved && !essentialsGames.approved && !essentialsUnknown.approved && has(essentialsGames.signals, "H7") && has(essentialsUnknown.signals, "H7"));
+  releaseAuthorization(essentialsPizza.authorizationId!);
+  await updateCardLimits(orla, 20_000, 50_000, "test", "trip");
+  const tripFlight = decideAuthorization({ cardId: orla, amountCents: 10_000, merchantName: "PROFILE AIRLINE", mcc: "4511", merchantCountry: "IE", at: limitAt(23) });
+  const globalBlock = decideAuthorization({ cardId: orla, amountCents: 100, merchantName: "PROFILE GAMBLING", mcc: "7995", merchantCountry: "IE", at: limitAt(24) });
+  check("C4", "Invariant", "Trip adds travel but cannot relax global blocks", "Airline approved; gambling declined by global policy", `${tripFlight.approved}/${globalBlock.declineCode}`, tripFlight.approved && !globalBlock.approved && globalBlock.declineCode === "blocked_mcc");
+  releaseAuthorization(tripFlight.authorizationId!);
+  await updateCardLimits(orla, 20_000, 50_000, "test", "standard");
+  const stripeControls = stripeSpendingControls({ perAuthCapCents: 20_000, monthlyLimitCents: 50_000, restrictionProfile: "trip" });
+  check(
+    "C5",
+    "Invariant",
+    "Stripe controls mirror local limits and trip categories",
+    "€200 per authorization, €500 monthly, airlines allowed, gambling absent",
+    JSON.stringify(stripeControls.spending_limits),
+    stripeControls.spending_limits.some((limit) => limit.interval === "per_authorization" && limit.amount === 20_000) &&
+      stripeControls.spending_limits.some((limit) => limit.interval === "monthly" && limit.amount === 50_000) &&
+      (stripeControls.allowed_categories as string[]).includes("airlines_air_carriers") &&
+      !(stripeControls.allowed_categories as string[]).includes("betting_casino_gambling"),
+  );
 
   // O2 + F4: sponsor top-up credited exactly once even if fulfilment repeats.
   const before = societyBalances("soc_drama").available;
@@ -80,17 +125,15 @@ async function main() {
   const b5 = [500, 1_000_000, 499, 1_000_001].map(limit);
   check("B5", "Boundary", "Top-up €5 / €10,000 / €4.99 / €10,000.01", "accepted, accepted, rejected, rejected", b5.join(", "), b5.join() === "accepted,accepted,rejected,rejected");
 
-  // Officer cards: card_drama_1 Aoife (treasurer), _2 Cian (events officer), _3 Saoirse, _4 Darragh, _5 Orla.
-  const awake = (db.prepare(`SELECT COUNT(*) n FROM card WHERE society_id='soc_drama' AND status='active'`).get() as { n: number }).n;
-  check("O4", "Ordinary", "Plan renewed: lapsed officer cards wake up", "5 of 5 cards active", `${awake} of 5 active`, awake === 5);
+  // Seeded cards: card_drama_1 Aoife, _2 Cian, _3 Saoirse, _4 Darragh; Orla was just issued.
   const card = "card_drama_2";
   createEvent({ societyId: "soc_drama", name: "Pizza Night", type: "social", startDate: eventDate, endDate: eventDate, expectedAttendees: 80, budgetCents: 30000, cardIds: [card] }, "test");
   const at = (time: string, date = eventDate) => dublinToIso(addDays(date, -1), time);
 
   // O1: ordinary pizza order.
-  const o1 = decideAuthorization({ cardId: card, amountCents: 18400, merchantName: "DOMINOS RATHMINES", mcc: "5814", merchantCountry: "IE", at: at("18:40") });
+  const o1 = decideAuthorization({ cardId: card, amountCents: 1840, merchantName: "DOMINOS RATHMINES", mcc: "5814", merchantCountry: "IE", at: at("18:40") });
   await assessAuthorization(o1.authorizationId!);
-  check("O1", "Ordinary", "€184 at Domino's on Pizza Night", "Approved, rules < 40, no flag", `${o1.approved ? "approved" : "declined"}, score ${o1.score}, ${flagOf(o1.authorizationId) ? "flagged" : "no flag"}`, o1.approved && o1.score < 40 && !flagOf(o1.authorizationId));
+  check("O1", "Ordinary", "€18.40 at Domino's on Pizza Night", "Approved, rules < 40, no flag", `${o1.approved ? "approved" : "declined"}, score ${o1.score}, ${flagOf(o1.authorizationId) ? "flagged" : "no flag"}`, o1.approved && o1.score < 40 && !flagOf(o1.authorizationId));
 
   // O3: printing.
   const o3 = decideAuthorization({ cardId: card, amountCents: 1400, merchantName: "SNAP PRINTING DUBLIN 2", mcc: "2741", merchantCountry: "IE", at: at("11:00") });
@@ -144,12 +187,12 @@ async function main() {
   const b3 = decideAuthorization({ cardId: saoirse, amountCents: 5000, merchantName: "COSTUME WORKSHOP DUBLIN", mcc: "5699", merchantCountry: "IE", at: at("14:00") });
   check("B3", "Boundary", "Amount exactly at the per-purchase cap", "Approved; R4 fires", `${b3.approved ? "approved" : "declined"}, R4 ${has(b3.signals, "R4")}`, b3.approved && has(b3.signals, "R4"));
   const b3b = decideAuthorization({ cardId: saoirse, amountCents: 5001, merchantName: "COSTUME WORKSHOP DUBLIN", mcc: "5699", merchantCountry: "IE", at: at("14:30") });
-  check("B3b", "Boundary", "Cap + €0.01", "Approved with H5 review signal", `${b3b.declineCode}`, b3b.approved && has(b3b.signals,"H5"));
+  check("B3b", "Boundary", "Cap + €0.01", "Declined by hard spending controls", `${b3b.declineCode}`, !b3b.approved && b3b.declineCode === "spending_controls" && has(b3b.signals,"H5"));
 
   // B9: the card's monthly limit (€90): €50 + €40 reaches it exactly, then one cent more.
   const b9a = decideAuthorization({ cardId: saoirse, amountCents: 4000, merchantName: "SNAP PRINTING DUBLIN 2", mcc: "2741", merchantCountry: "IE", at: at("15:10") });
   const b9b = decideAuthorization({ cardId: saoirse, amountCents: 1, merchantName: "SNAP PRINTING DUBLIN 2", mcc: "2741", merchantCountry: "IE", at: at("15:20") });
-  check("B9", "Boundary", "Monthly card limit exactly reached, then + €0.01", "Both approved; H6 triggers review", `${b9a.approved ? "approved" : "declined"}, then ${b9b.declineCode} ${has(b9b.signals, "H6") ? "(H6)" : ""}`, b9a.approved && b9b.approved && has(b9b.signals, "H6"));
+  check("B9", "Boundary", "Monthly card limit exactly reached, then + €0.01", "Exact limit approved; next cent declined", `${b9a.approved ? "approved" : "declined"}, then ${b9b.declineCode} ${has(b9b.signals, "H6") ? "(H6)" : ""}`, b9a.approved && !b9b.approved && b9b.declineCode === "spending_controls" && has(b9b.signals, "H6"));
 
   // B8: five officer cards per society.
   let b8 = "accepted";
@@ -173,7 +216,6 @@ async function main() {
   check("B1", "Boundary", "Amount exactly equal to remaining budget", "Approved; remaining → €0.00", `${b1.approved ? "approved" : "declined"}, remaining €${(remAfter / 100).toFixed(2)}`, b1.approved && remAfter === 0);
 
   // B6: event window edge (end + 3 days 23:59 vs + 4 days).
-  const orla = "card_drama_5";
   createEvent({ societyId: "soc_drama", name: "Window test", type: "social", startDate: today, endDate: today, expectedAttendees: 10, budgetCents: 20000, cardIds: [orla] }, "test");
   const inWin = decideAuthorization({ cardId: orla, amountCents: 2000, merchantName: "FREENOW", mcc: "4121", merchantCountry: "IE", at: dublinToIso(addDays(today, 3), "23:59") });
   const outWin = decideAuthorization({ cardId: orla, amountCents: 2000, merchantName: "FREENOW", mcc: "4121", merchantCountry: "IE", at: dublinToIso(addDays(today, 4), "00:01") });
@@ -193,7 +235,6 @@ async function main() {
 
   // F9: concurrent authorisations that together exceed the budget.
   createEvent({ societyId: "soc_drama", name: "Race test", type: "social", startDate: eventDate, endDate: eventDate, expectedAttendees: 10, budgetCents: 10000, cardIds: [darragh] }, "test");
-  const { postEntry }=await import("../src/lib/ledger");
   const raceReserve=societyBalances("soc_drama").available-10000;
   postEntry({societyId:"soc_drama",type:"transfer_out",amountCents:raceReserve,refType:"test",refId:"race",at:new Date().toISOString()});
   const race = await Promise.all(
@@ -203,6 +244,11 @@ async function main() {
   check("F9", "Failure", "Two concurrent €60 auths on a €100 budget", "One approved, one declined", `${approvedCount} approved`, approvedCount === 1);
 
   postEntry({societyId:"soc_drama",type:"topup",amountCents:raceReserve+100000,refType:"test",refId:"restore",at:new Date().toISOString()});
+  const demoBefore = (db.prepare(`SELECT COUNT(*) n FROM authorization WHERE card_id=? AND merchant_name=?`).get(orla, "DOMINO'S BELFIELD") as { n: number }).n;
+  const demoOne = await performDemoPurchase(orla, "pizza", "duplicate-demo-request");
+  const demoTwo = await performDemoPurchase(orla, "pizza", "duplicate-demo-request");
+  const demoAfter = (db.prepare(`SELECT COUNT(*) n FROM authorization WHERE card_id=? AND merchant_name=?`).get(orla, "DOMINO'S BELFIELD") as { n: number }).n;
+  check("D1", "Invariant", "Duplicate marketplace request is idempotent", "One authorization, one €18.40 balance movement", `${demoAfter - demoBefore} authorization, same=${demoOne.authorization_id === demoTwo.authorization_id}`, demoAfter - demoBefore === 1 && demoOne.authorization_id === demoTwo.authorization_id && demoOne.balance_before - demoOne.balance_after === 1840);
   // F1: OpenRouter unreachable → rules-only, decision unaffected.
   env.openRouterKey = "sk-or-invalid-test-key";
   env.jevTimeoutMs = 3000;

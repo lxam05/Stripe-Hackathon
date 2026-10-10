@@ -44,12 +44,24 @@ export function actionPolicy(a: AuthRow, signals: Signal[], jev: JevOutput | nul
   const rulesHigh = a.rules_score >= SCORE_FLAG || signals.some((s) => s.id === "H4") || (a.decision === "declined" && !signals.some((s) => s.hard));
   const base = declineSeverity(a, signals);
 
-  if (!jev || jev.confidence < 0.6) {
+  if (!jev) {
     const flag = maxSev(base, a.rules_score >= SCORE_FLAG ? "medium" : null);
     return {
       flag,
       freeze: false,
-      reason: !jev ? "Rules-only thresholds (AI unavailable)" : `JEV confidence ${jev.confidence.toFixed(2)} < 0.6 → rules thresholds`,
+      reason: "Rules-only thresholds (AI unavailable)",
+    };
+  }
+  // A lower-confidence JEV concern may still put a paid purchase in the treasurer's
+  // queue, but never freezes a card. Human review is deliberately the safe action.
+  if (jev.confidence < 0.6) {
+    const cautiousJevFlag: Sev | null = jev.risk_level === "high" ? "medium" : jev.risk_level === "medium" ? "low" : null;
+    return {
+      flag: maxSev(base, maxSev(a.rules_score >= SCORE_FLAG ? "medium" : null, cautiousJevFlag)),
+      freeze: false,
+      reason: cautiousJevFlag
+        ? `JEV ${jev.risk_level} with ${jev.confidence.toFixed(2)} confidence → cautious treasurer review`
+        : `JEV confidence ${jev.confidence.toFixed(2)} < 0.6 → rules thresholds`,
     };
   }
   switch (jev.risk_level) {
@@ -165,7 +177,10 @@ function insertAssessment(authId: string, f: Record<string, unknown>) {
 async function applyOutcome(a: AuthRow, outcome: PolicyOutcome, reason: string, actor: string) {
   if (!outcome.flag) return;
   const db = getDb();
-  db.prepare(`UPDATE payment_review SET status='pending',reason=reason || '; risk assessment requires review' WHERE authorization_id=? AND status='recurring_approved'`).run(a.id);
+  db.prepare(`UPDATE payment_review SET status='pending',reason=? WHERE authorization_id=? AND status IN ('recurring_approved','not_required')`).run(
+    `JEV: ${reason}`,
+    a.id,
+  );
   const existing = db.prepare(`SELECT * FROM flag WHERE authorization_id=?`).get(a.id) as
     | { id: string; severity: Sev; status: string }
     | undefined;
