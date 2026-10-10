@@ -11,7 +11,7 @@ import { requireActor } from "@/lib/guard";
 import { EVENT_TYPES } from "@/lib/mcc";
 import { addDays, fmtDate, fmtEur } from "@/lib/money";
 import { getEvent, getSociety, listCards, listTransactions } from "@/lib/queries";
-import { canManage } from "@/lib/session";
+import { canManageSociety, canSeeEvent } from "@/lib/access";
 
 export async function generateMetadata({ params }: PageProps<"/events/[id]">) {
   const e = getEvent((await params).id);
@@ -23,15 +23,18 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   const { id } = await params;
   const sp = await searchParams;
   const e = getEvent(id);
-  if (!e || (actor.kind === "member" && actor.societyId !== e.society_id)) notFound();
+  if (!e || !canSeeEvent(actor, e.id)) notFound();
   const soc = getSociety(e.society_id)!;
-  const txns = listTransactions({ eventId: e.id, limit: 100 });
+  const manage = canManageSociety(actor, e.society_id);
+  // Officers see the event's budget, but only their own card and their own purchases on it.
+  const ownOnly = actor.kind === "member" && !manage ? actor.id : undefined;
+  const txns = listTransactions({ eventId: e.id, memberId: ownOnly, limit: 100 });
   const pendingJev = txns.some((t) => t.ra_status === "pending");
   const typeLabel = EVENT_TYPES.find((t) => t.value === e.type)?.label ?? e.type;
   const open = e.status === "open";
-  const editable = open && canManage(actor);
-  const societyCards = listCards({ societyId: e.society_id, usable: true });
-  const onEvent = e.cards.filter((c) => c.status === "active" || c.status === "inactive");
+  const editable = open && manage;
+  const societyCards = listCards({ societyId: e.society_id, memberId: ownOnly, usable: true });
+  const onEvent = e.cards.filter((c) => (c.status === "active" || c.status === "inactive") && (!ownOnly || c.member_id === ownOnly));
   const simCard = onEvent.find((c) => c.status === "active");
 
   return (
@@ -75,7 +78,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
         <div className="space-y-4">
           <EventCover name={e.name} type={e.type} typeLabel={typeLabel} size="md" />
           <Panel>
-            <SectionTitle aside={open ? `${onEvent.length} on this event` : undefined}>Officer cards</SectionTitle>
+            <SectionTitle aside={open && !ownOnly ? `${onEvent.length} on this event` : undefined}>{ownOnly ? "Your card" : "Officer cards"}</SectionTitle>
             {open ? (
               <EventCards eventId={e.id} cards={societyCards} editable={editable} />
             ) : (
@@ -117,7 +120,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
           </Panel>
           <Panel pad={false}>
             <div className="px-5 pb-1 pt-5">
-              <SectionTitle aside={`${txns.length} purchase${txns.length === 1 ? "" : "s"}`}>Purchases</SectionTitle>
+              <SectionTitle aside={`${txns.length} purchase${txns.length === 1 ? "" : "s"}`}>{ownOnly ? "Your purchases" : "Purchases"}</SectionTitle>
             </div>
             <TxnList rows={txns} showEvent={false} empty="No purchases for this event yet. Try the purchase simulator." />
           </Panel>

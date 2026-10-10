@@ -1,7 +1,7 @@
 {
-  "ran_at": "2026-10-10T11:16:10.060Z",
-  "passed": 32,
-  "total": 32,
+  "ran_at": "2026-10-10T11:26:19.340Z",
+  "passed": 35,
+  "total": 35,
   "results": [
     {
       "id": "O2",
@@ -249,6 +249,30 @@
       "name": "Stripe API error issuing an officer card",
       "expected": "Card saved as pending with a clear error; retry possible",
       "actual": "card pending: Invalid API Key provided: sk_test_****************",
+      "pass": true
+    },
+    {
+      "id": "A1",
+      "kind": "Invariant",
+      "name": "Officer's lists: purchases and cards",
+      "expected": "Only their own purchases and their own card",
+      "actual": "69 purchases, owners mem_robotics_2; cards mem_robotics_2",
+      "pass": true
+    },
+    {
+      "id": "A2",
+      "kind": "Invariant",
+      "name": "Another officer's purchase; managing the society",
+      "expected": "Officer no, own treasurer yes, other society's treasurer no; only the treasurer manages",
+      "actual": "officer false, treasurer true, other treasurer false; manage: officer false, other treasurer false",
+      "pass": true
+    },
+    {
+      "id": "A3",
+      "kind": "Invariant",
+      "name": "Events an officer can open",
+      "expected": "Their card's event yes, others no; treasurer all",
+      "actual": "own true, other false, treasurer true",
       "pass": true
     },
     {

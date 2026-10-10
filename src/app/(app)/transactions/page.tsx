@@ -4,6 +4,7 @@ import { TxnList } from "@/components/txn-list";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { PageHeader, Panel, cx } from "@/components/ui";
 import { requireActor } from "@/lib/guard";
+import { isOfficer, scopeOf } from "@/lib/access";
 import { listTransactions } from "@/lib/queries";
 
 export const metadata = { title: "Transactions" };
@@ -13,8 +14,9 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/tra
   const sp = await searchParams;
   const q = typeof sp.q === "string" ? sp.q.slice(0, 60) : "";
   const flagged = sp.view === "flagged";
+  const officer = isOfficer(actor);
   const rows = listTransactions({
-    societyId: actor.kind === "member" ? actor.societyId : undefined,
+    ...scopeOf(actor),
     q: q || undefined,
     flaggedOnly: flagged,
     limit: 200,
@@ -24,8 +26,8 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/tra
   return (
     <>
       <AutoRefresh active={rows.some((r) => r.ra_status === "pending")} />
-      <PageHeader eyebrow={actor.kind === "member" ? actor.societyName : "All societies"} title="Transactions">
-        Every authorisation, approved or declined, with its real-time decision and JEV&rsquo;s assessment.
+      <PageHeader eyebrow={actor.kind === "member" ? actor.societyName : "All societies"} title={officer ? "My purchases" : "Transactions"}>
+        {officer ? "Every purchase on your card" : "Every authorisation"}, approved or declined, with its real-time decision and JEV&rsquo;s assessment.
       </PageHeader>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex gap-1 rounded-full border border-line bg-surface p-1">

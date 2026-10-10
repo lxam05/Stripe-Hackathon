@@ -152,11 +152,27 @@ export function societyOverview(societyId: string) {
   return { ...b, committed, unallocated: b.available - committed, openFlags: openFlags.n, termSpent: termSpend.v };
 }
 
-export function listEvents(societyId: string, status?: "open" | "closed") {
+/**
+ * Events in a society. With `memberId` (an officer), only events their card spends for
+ * or that they've bought something for, and only their own card on each.
+ */
+export function listEvents(societyId: string, status?: "open" | "closed", memberId?: string) {
+  const where = ["e.society_id=?"];
+  const args: unknown[] = [societyId];
+  if (status) {
+    where.push("e.status=?");
+    args.push(status);
+  }
+  if (memberId) {
+    where.push(
+      "(EXISTS (SELECT 1 FROM card c WHERE c.event_id=e.id AND c.member_id=?) OR EXISTS (SELECT 1 FROM authorization a WHERE a.event_id=e.id AND a.member_id=?))",
+    );
+    args.push(memberId, memberId);
+  }
   const rows = getDb()
-    .prepare(`SELECT * FROM event WHERE society_id=? ${status ? "AND status=?" : ""} ORDER BY start_date DESC`)
-    .all(...(status ? [societyId, status] : [societyId])) as EventRow[];
-  return rows.map((e) => ({ ...e, ...eventRemaining(e.id, e.budget_cents), cards: e.status === "open" ? listCards({ eventId: e.id }) : [] }));
+    .prepare(`SELECT e.* FROM event e WHERE ${where.join(" AND ")} ORDER BY e.start_date DESC`)
+    .all(...args) as EventRow[];
+  return rows.map((e) => ({ ...e, ...eventRemaining(e.id, e.budget_cents), cards: e.status === "open" ? listCards({ eventId: e.id, memberId }) : [] }));
 }
 
 export function getEvent(id: string) {
@@ -169,9 +185,13 @@ export function getEvent(id: string) {
  * Officer cards with holder, current event and this month's spend, in committee order.
  * Cancelled cards are left out unless `includeCanceled` (they still show in history).
  */
-export function listCards(opts: { societyId?: string; eventId?: string; usable?: boolean; includeCanceled?: boolean }) {
+export function listCards(opts: { societyId?: string; eventId?: string; memberId?: string; usable?: boolean; includeCanceled?: boolean }) {
   const where: string[] = [];
   const args: unknown[] = [];
+  if (opts.memberId) {
+    where.push("c.member_id=?");
+    args.push(opts.memberId);
+  }
   if (opts.societyId) {
     where.push("c.society_id=?");
     args.push(opts.societyId);
@@ -194,9 +214,13 @@ export function listCards(opts: { societyId?: string; eventId?: string; usable?:
   return rows.map((c) => ({ ...c, month_spent: cardMonthSpend(c.id, now) }));
 }
 
-export function listTransactions(opts: { societyId?: string; eventId?: string; limit?: number; flaggedOnly?: boolean; q?: string }) {
+export function listTransactions(opts: { societyId?: string; memberId?: string; eventId?: string; limit?: number; flaggedOnly?: boolean; q?: string }) {
   const where: string[] = [];
   const args: unknown[] = [];
+  if (opts.memberId) {
+    where.push("a.member_id=?");
+    args.push(opts.memberId);
+  }
   if (opts.societyId) {
     where.push("a.society_id=?");
     args.push(opts.societyId);
@@ -247,14 +271,16 @@ export function latestAssessment(authId: string) {
     .get(authId) as AssessmentRow | undefined;
 }
 
-export function comparablePurchases(t: TxnRow) {
+/** Same-category purchases in the society; pass `memberId` to limit an officer to their own. */
+export function comparablePurchases(t: TxnRow, memberId?: string) {
   return getDb()
     .prepare(
       `SELECT a.id, a.amount_cents, a.merchant_name, a.created_at, ${EVENT_COLS} FROM authorization a LEFT JOIN event e ON e.id=a.event_id
        WHERE a.society_id=? AND a.mcc_group=(SELECT mcc_group FROM authorization WHERE id=?) AND a.id != ? AND a.decision='approved'
+       ${memberId ? "AND a.member_id=?" : ""}
        ORDER BY a.created_at DESC LIMIT 5`,
     )
-    .all(t.society_id, t.id, t.id) as { id: string; amount_cents: number; merchant_name: string; created_at: string; event_name: string }[];
+    .all(t.society_id, t.id, t.id, ...(memberId ? [memberId] : [])) as { id: string; amount_cents: number; merchant_name: string; created_at: string; event_name: string }[];
 }
 
 export function signalsOf(t: { rule_signals: string }) {
@@ -273,9 +299,13 @@ export interface FlagRow extends TxnRow {
   card_status: string;
 }
 
-export function listFlags(opts: { societyId?: string; status?: "open" | "resolved" | "all" }) {
+export function listFlags(opts: { societyId?: string; memberId?: string; status?: "open" | "resolved" | "all" }) {
   const where: string[] = [];
   const args: unknown[] = [];
+  if (opts.memberId) {
+    where.push("a.member_id=?");
+    args.push(opts.memberId);
+  }
   if (opts.societyId) {
     where.push("a.society_id=?");
     args.push(opts.societyId);
@@ -298,12 +328,13 @@ export function listFlags(opts: { societyId?: string; status?: "open" | "resolve
     .all(...args) as FlagRow[];
 }
 
-export function openFlagCount(societyId?: string) {
+export function openFlagCount(scope: { societyId?: string; memberId?: string } = {}) {
   const r = getDb()
     .prepare(
-      `SELECT COUNT(*) n FROM flag f JOIN authorization a ON a.id=f.authorization_id WHERE f.status IN ('open','receipt_requested') ${societyId ? "AND a.society_id=?" : ""}`,
+      `SELECT COUNT(*) n FROM flag f JOIN authorization a ON a.id=f.authorization_id WHERE f.status IN ('open','receipt_requested')
+       ${scope.societyId ? "AND a.society_id=?" : ""} ${scope.memberId ? "AND a.member_id=?" : ""}`,
     )
-    .get(...(societyId ? [societyId] : [])) as { n: number };
+    .get(...[scope.societyId, scope.memberId].filter(Boolean)) as { n: number };
   return r.n;
 }
 
@@ -339,9 +370,9 @@ export function listAudit(limit = 30) {
 }
 
 /** Cards the purchase simulator can charge: live cards with their society and remaining money. */
-export function simulatorCards(societyId?: string) {
+export function simulatorCards(scope: { societyId?: string; memberId?: string }) {
   const db = getDb();
-  return listCards({ societyId, usable: true }).map((c) => {
+  return listCards({ ...scope, usable: true }).map((c) => {
     const soc = db.prepare(`SELECT name, slug FROM society WHERE id=?`).get(c.society_id) as { name: string; slug: string };
     const onEvent = c.event_id && c.event_status === "open";
     const ev = onEvent ? (db.prepare(`SELECT budget_cents FROM event WHERE id=?`).get(c.event_id) as { budget_cents: number }) : null;

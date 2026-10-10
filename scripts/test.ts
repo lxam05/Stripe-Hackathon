@@ -319,6 +319,43 @@ async function main() {
   const f10card = db.prepare(`SELECT status, error FROM card WHERE id=?`).get(f10.cardId) as { status: string; error: string };
   check("F10", "Failure", "Stripe API error issuing an officer card", "Card saved as pending with a clear error; retry possible", `card ${f10card.status}: ${(f10card.error ?? "").slice(0, 50)}`, !f10.issued.ok && f10card.status === "pending" && !!f10card.error);
 
+  // A1–A3: what each kind of user can see (Robotics: Niamh treasurer, Conor and Emeka officers; Róisín treasurer of Law).
+  const { canManageSociety, canSeeEvent, canSeeOwned, scopeOf } = await import("../src/lib/access");
+  const { listCards, listTransactions } = await import("../src/lib/queries");
+  type Actor = import("../src/lib/session").Actor;
+  const member = (id: string, role: string, societyId: string) => ({ kind: "member", id, name: id, role, societyId, societyName: "", societySlug: "", societyIcon: "" }) as Actor;
+  const conor = member("mem_robotics_2", "events_officer", "soc_robotics");
+  const niamh = member("mem_robotics_1", "treasurer", "soc_robotics");
+  const roisin = member("mem_law_1", "treasurer", "soc_law");
+  const emekaBuy = db.prepare(`SELECT society_id, member_id FROM authorization WHERE member_id='mem_robotics_3' LIMIT 1`).get() as { society_id: string; member_id: string };
+  const conorTxns = listTransactions({ ...scopeOf(conor), limit: 1000 });
+  const conorCards = listCards(scopeOf(conor));
+  check(
+    "A1",
+    "Invariant",
+    "Officer's lists: purchases and cards",
+    "Only their own purchases and their own card",
+    `${conorTxns.length} purchases, owners ${[...new Set(conorTxns.map((t) => t.member_id))].join("/")}; cards ${conorCards.map((c) => c.member_id).join("/")}`,
+    conorTxns.length > 0 && conorTxns.every((t) => t.member_id === conor.id) && conorCards.length === 1 && conorCards[0].member_id === conor.id,
+  );
+  const a2 = [canSeeOwned(conor, emekaBuy), canSeeOwned(niamh, emekaBuy), canSeeOwned(roisin, emekaBuy), canManageSociety(conor, "soc_robotics"), canManageSociety(roisin, "soc_robotics")];
+  check(
+    "A2",
+    "Invariant",
+    "Another officer's purchase; managing the society",
+    "Officer no, own treasurer yes, other society's treasurer no; only the treasurer manages",
+    `officer ${a2[0]}, treasurer ${a2[1]}, other treasurer ${a2[2]}; manage: officer ${a2[3]}, other treasurer ${a2[4]}`,
+    a2.join() === "false,true,false,false,false",
+  );
+  const notConors = db
+    .prepare(
+      `SELECT id FROM event e WHERE society_id='soc_robotics' AND NOT EXISTS (SELECT 1 FROM card c WHERE c.event_id=e.id AND c.member_id=?) AND NOT EXISTS (SELECT 1 FROM authorization a WHERE a.event_id=e.id AND a.member_id=?) LIMIT 1`,
+    )
+    .get(conor.id, conor.id) as { id: string };
+  const conorsEvent = (db.prepare(`SELECT event_id FROM card WHERE id='card_robotics_2'`).get() as { event_id: string }).event_id;
+  const a3 = [canSeeEvent(conor, conorsEvent), canSeeEvent(conor, notConors.id), canSeeEvent(niamh, notConors.id)];
+  check("A3", "Invariant", "Events an officer can open", "Their card's event yes, others no; treasurer all", `own ${a3[0]}, other ${a3[1]}, treasurer ${a3[2]}`, a3.join() === "true,false,true");
+
   // Invariant: the ledger reconciles for every society.
   const rec = reconcileAll();
   check("L1", "Invariant", "Ledger reconciles for all societies", "available ≥ 0 and held = Σ pending holds", rec.map((r) => `${r.name.replace("UCD ", "")} ${r.ok ? "ok" : "BROKEN"}`).join(", "), rec.every((r) => r.ok));

@@ -4,7 +4,7 @@ import QRCode from "qrcode";
 import { ExternalLink } from "lucide-react";
 import { CopyButton } from "@/components/copy-button";
 import { PageHeader, Panel, Pill, SectionTitle, StatTile, button } from "@/components/ui";
-import { requireMember } from "@/lib/guard";
+import { requireTreasurer } from "@/lib/guard";
 import { env } from "@/lib/env";
 import { getDb } from "@/lib/db";
 import { fmtDate, fmtEur } from "@/lib/money";
@@ -23,7 +23,7 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export default async function FundingPage() {
-  const actor = await requireMember();
+  const actor = await requireTreasurer();
   const soc = getSociety(actor.societyId)!;
   const url = `${env.appUrl}/s/${soc.slug}/topup`;
   const qr = await QRCode.toString(url, { type: "svg", margin: 0, color: { dark: "#16201c", light: "#00000000" } });

@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import fs from "node:fs";
 import path from "node:path";
 import Image from "next/image";
@@ -29,8 +30,12 @@ function readTests() {
 }
 
 export default async function EvalPage() {
-  await requireActor();
+  const actor = await requireActor();
+  // Model-quality page for the Office and treasurers. Sample cases link to real purchases,
+  // so a treasurer only sees their own society's.
+  if (actor.kind === "member" && actor.role !== "treasurer") redirect("/dashboard");
   const e = computeEval();
+  const samples = actor.kind === "admin" ? e.samples : e.samples.filter((s) => s.society_id === actor.societyId);
   const progress = evalProgress();
   const tests = readTests();
   const rows: (Metrics | null)[] = [e.rules, e.jev, e.combined];
@@ -175,13 +180,13 @@ export default async function EvalPage() {
         </div>
       </div>
 
-      {e.samples.length > 0 && (
+      {samples.length > 0 && (
         <>
           <div className="mt-8">
             <SectionTitle>Sample explanations</SectionTitle>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            {e.samples.map((s) => (
+            {samples.map((s) => (
               <Link key={s.id} href={`/transactions/${s.id}`} className="rounded-2xl border border-line bg-surface p-4 hover:shadow-[var(--shadow-card)]">
                 <div className="flex items-center justify-between gap-2 text-sm">
                   <span className="truncate font-medium">{s.merchant}</span>

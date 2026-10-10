@@ -2,13 +2,14 @@ import { NextResponse } from "next/server";
 import { listFlags } from "@/lib/queries";
 import { apiError } from "@/lib/api";
 import { getActor } from "@/lib/session";
+import { scopeOf } from "@/lib/access";
 
 /** GET /api/flags?status=open|resolved|all — review queue. */
 export async function GET(req: Request) {
   const actor = await getActor();
   if (!actor) return apiError(401, "unauthenticated", "Pick a demo user first.");
   const status = (new URL(req.url).searchParams.get("status") ?? "open") as "open" | "resolved" | "all";
-  const rows = listFlags({ societyId: actor.kind === "member" ? actor.societyId : undefined, status });
+  const rows = listFlags({ ...scopeOf(actor), status });
   return NextResponse.json({
     flags: rows.map((r) => ({
       id: r.f_id,

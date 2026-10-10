@@ -9,27 +9,32 @@ import { requireActor } from "@/lib/guard";
 import { mccInfo } from "@/lib/mcc";
 import { fmtDateTime, fmtEur, relativeTime } from "@/lib/money";
 import { listFlags, signalsOf } from "@/lib/queries";
-import { canManage } from "@/lib/session";
+import { isOfficer, scopeOf } from "@/lib/access";
 
 export const metadata = { title: "Review queue" };
 
 export default async function ReviewPage() {
   const actor = await requireActor();
-  const societyId = actor.kind === "member" ? actor.societyId : undefined;
-  const open = listFlags({ societyId, status: "open" });
-  const resolved = listFlags({ societyId, status: "resolved" }).slice(0, 8);
-  const manage = canManage(actor);
+  const scope = scopeOf(actor);
+  const open = listFlags({ ...scope, status: "open" });
+  const resolved = listFlags({ ...scope, status: "resolved" }).slice(0, 8);
+  const officer = isOfficer(actor);
+  const manage = !officer;
 
   return (
     <>
       <AutoRefresh active={open.some((f) => f.ra_status === "pending")} />
-      <PageHeader eyebrow={actor.kind === "member" ? actor.societyName : "All societies"} title="Review queue">
-        Sorted by severity, then age. Each flag shows the evidence behind it, so you can decide in seconds.
+      <PageHeader eyebrow={actor.kind === "member" ? actor.societyName : "All societies"} title={officer ? "Flags on my purchases" : "Review queue"}>
+        {officer
+          ? "Purchases on your card that the rules or JEV asked your treasurer to check. Your treasurer resolves them; have the receipt ready."
+          : "Sorted by severity, then age. Each flag shows the evidence behind it, so you can decide in seconds."}
       </PageHeader>
 
       {open.length === 0 ? (
         <Panel className="mb-10">
-          <EmptyState title="Nothing needs your attention">JEV and the rules engine will flag anything that doesn&rsquo;t fit. You&rsquo;ll see it here first.</EmptyState>
+          <EmptyState title={officer ? "Nothing flagged on your card" : "Nothing needs your attention"}>
+            {officer ? "If a purchase on your card needs a second look, it shows up here." : <>JEV and the rules engine will flag anything that doesn&rsquo;t fit. You&rsquo;ll see it here first.</>}
+          </EmptyState>
         </Panel>
       ) : (
         <div className="mb-10 space-y-4">

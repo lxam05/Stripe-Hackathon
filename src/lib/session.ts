@@ -48,6 +48,5 @@ export async function getActor(): Promise<Actor | null> {
   };
 }
 
-export const canManage = (a: Actor | null) => a?.kind === "admin" || (a?.kind === "member" && a.role === "treasurer");
 
 export const actorLabel = (a: Actor) => (a.kind === "admin" ? "admin" : a.id);

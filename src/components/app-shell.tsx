@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { env, jevEnabled, stripeEnabled } from "@/lib/env";
+import { scopeOf } from "@/lib/access";
 import { openFlagCount } from "@/lib/queries";
 import { ROLE_LABEL } from "@/lib/roles";
 import type { Actor } from "@/lib/session";
@@ -10,27 +11,36 @@ import { NavLinks, type NavItem } from "./nav-links";
 import { SwitchUser } from "./switch-user";
 
 export function AppShell({ actor, children }: { actor: Actor; children: ReactNode }) {
-  const flags = openFlagCount(actor.kind === "member" ? actor.societyId : undefined);
+  const flags = openFlagCount(scopeOf(actor));
+  const treasurer = actor.kind === "member" && actor.role === "treasurer";
+  // Officers only get their own card, purchases and flags; money and billing are the treasurer's.
   const main: NavItem[] =
-    actor.kind === "member"
+    actor.kind === "admin"
       ? [
-          { href: "/dashboard", label: "Overview", icon: "dashboard" },
-          { href: "/cards", label: "Officer cards", icon: "cards" },
-          { href: "/events", label: "Events", icon: "events" },
-          { href: "/review", label: "Review queue", icon: "review", badge: flags },
-          { href: "/transactions", label: "Transactions", icon: "transactions" },
-          { href: "/funding", label: "Funding", icon: "funding" },
-          { href: "/plan", label: "Plan", icon: "plan" },
-        ]
-      : [
           { href: "/admin", label: "Societies Office", icon: "admin" },
           { href: "/review", label: "Review queue", icon: "review", badge: flags },
           { href: "/transactions", label: "Transactions", icon: "transactions" },
-        ];
+        ]
+      : treasurer
+        ? [
+            { href: "/dashboard", label: "Overview", icon: "dashboard" },
+            { href: "/cards", label: "Officer cards", icon: "cards" },
+            { href: "/events", label: "Events", icon: "events" },
+            { href: "/review", label: "Review queue", icon: "review", badge: flags },
+            { href: "/transactions", label: "Transactions", icon: "transactions" },
+            { href: "/funding", label: "Funding", icon: "funding" },
+            { href: "/plan", label: "Plan", icon: "plan" },
+          ]
+        : [
+            { href: "/dashboard", label: "Overview", icon: "dashboard" },
+            { href: "/cards", label: "My card", icon: "cards" },
+            { href: "/events", label: "My events", icon: "events" },
+            { href: "/review", label: "Flags on my purchases", icon: "review", badge: flags },
+            { href: "/transactions", label: "My purchases", icon: "transactions" },
+          ];
   const demo: NavItem[] = [
     { href: "/simulator", label: "Purchase simulator", icon: "simulator" },
-    { href: "/eval", label: "Evaluation", icon: "eval" },
-    ...(actor.kind === "member" ? [{ href: "/admin", label: "Societies Office", icon: "admin" } as NavItem] : []),
+    ...(actor.kind === "admin" || treasurer ? [{ href: "/eval", label: "Evaluation", icon: "eval" } as NavItem] : []),
   ];
 
   return (

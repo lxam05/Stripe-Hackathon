@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { captureAuthorization } from "@/lib/authorize";
 import { apiError, readJson } from "@/lib/api";
 import { getActor } from "@/lib/session";
+import { authorizationOwner, canSeeOwned } from "@/lib/access";
 import { parseEuroToCents } from "@/lib/money";
 
 /** POST — simulate the merchant capturing a held authorisation (optionally a different amount, e.g. a tip). */
 export async function POST(req: Request, ctx: RouteContext<"/api/transactions/[id]/capture">) {
-  if (!(await getActor())) return apiError(401, "unauthenticated", "Pick a demo user first.");
+  const actor = await getActor();
+  if (!actor) return apiError(401, "unauthenticated", "Pick a demo user first.");
   const { id } = await ctx.params;
+  if (!canSeeOwned(actor, authorizationOwner(id))) return apiError(404, "not_found", "Purchase not found");
   const b = await readJson<{ amount?: string }>(req).catch(() => ({}) as { amount?: string });
   const cents = b.amount ? parseEuroToCents(b.amount) : undefined;
   if (b.amount && cents == null) return apiError(400, "invalid_amount", "Enter a capture amount like 12.50");

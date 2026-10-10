@@ -32,7 +32,7 @@ No keys are required. Without them, Balance runs a **simulated checkout** (it ne
 Other scripts:
 
 ```bash
-npm test           # PRD §11.2 test matrix (32 ordinary / boundary / failure cases) → data/test-results.json
+npm test           # PRD §11.2 test matrix (35 ordinary / boundary / failure / access cases) → data/test-results.json
 npm run eval       # JEV over the labelled eval set: rules vs JEV vs combined (needs OPENROUTER_API_KEY)
 npm run eval -- ~typesafe/jev-latest   # compare another Jev release
 npm run seed       # regenerate the synthetic year (fixed seed)
@@ -50,7 +50,20 @@ npm run typecheck && npm run lint
    * **Paddy Power €50** → declined at the card (blocked MCC 7995) and flagged high.
    * **Electro World €100 at 02:14** → approved by the rules (within limits, score 40, so it goes to review). With `OPENROUTER_API_KEY` set, JEV explains why electronics at 2am doesn't fit a pizza social, and rules ≥ 40 + JEV high → **card auto-frozen**. Without a key, the rules flag it for review, labelled "AI unavailable".
 6. **Review queue:** resolve as *Misuse*. The card is cancelled, the hold released, and the incident written to the audit log. The freed slot can take a replacement card from **Officer cards**.
-7. **Evaluation:** rules vs JEV vs combined on the labelled set, per-anomaly-type catch rates, 32/32 test matrix, JEV's known limits.
+7. **Evaluation:** rules vs JEV vs combined on the labelled set, per-anomaly-type catch rates, 35/35 test matrix, JEV's known limits.
+
+## Who sees what
+
+| | Societies Office | Treasurer | Other officers |
+|---|---|---|---|
+| Societies | All | Their own | Their own |
+| Officer cards | All (via societies) | All 5, and manages them | Only their own card |
+| Purchases, flags | All | Whole society; resolves flags | Only purchases on their own card (read-only flags) |
+| Events | All | All; creates, assigns cards, closes | Events their card spends for or they bought for; only their own purchases on them |
+| Funding, ledger, plan & billing | Overview | Yes | No |
+| Simulator / Evaluation | All cards / yes | Society's cards / own society's samples | Own card / no |
+
+Rules live in `src/lib/access.ts` and are enforced on every page and API route (not only hidden in the UI). An officer requesting someone else's purchase, card or event gets a 404.
 
 ## How it's built
 

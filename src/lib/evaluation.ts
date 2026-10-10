@@ -102,7 +102,7 @@ export function computeEval() {
   let combined: Metrics | null = null;
   const byType = new Map<string, { n: number; rules: number; jev: number; combined: number }>();
   let consistency: { cases: number; meanStdev: number; levelAgreement: number } | null = null;
-  let samples: { id: string; merchant: string; amount: number; type: string | null; truth: boolean; level: string | null; summary: string | null }[] = [];
+  let samples: { id: string; society_id: string; merchant: string; amount: number; type: string | null; truth: boolean; level: string | null; summary: string | null }[] = [];
   let failures = 0;
 
   const results = run
@@ -180,6 +180,7 @@ export function computeEval() {
       .filter((_, i) => i % 4 === 0)
       .map((a) => ({
         id: a.id,
+        society_id: a.society_id,
         merchant: a.merchant_name,
         amount: a.amount_cents,
         type: a.anomaly_type,

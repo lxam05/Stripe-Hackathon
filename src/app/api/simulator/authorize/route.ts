@@ -2,11 +2,13 @@ import { NextResponse } from "next/server";
 import { simulatePurchase } from "@/lib/simulator";
 import { apiError, handleError, readJson } from "@/lib/api";
 import { getActor } from "@/lib/session";
+import { canSeeOwned, cardOwner } from "@/lib/access";
 import { dublinToIso } from "@/lib/money";
 
 /** POST /api/simulator/authorize — demo-only: fire a sandbox authorisation. */
 export async function POST(req: Request) {
-  if (!(await getActor())) return apiError(401, "unauthenticated", "Pick a demo user first.");
+  const actor = await getActor();
+  if (!actor) return apiError(401, "unauthenticated", "Pick a demo user first.");
   try {
     const b = await readJson<{
       card_id: string;
@@ -18,6 +20,8 @@ export async function POST(req: Request) {
       local_time?: string;
       auto_capture?: boolean;
     }>(req);
+    // Officers can only use their own card; treasurers any card in their society.
+    if (!canSeeOwned(actor, cardOwner(String(b.card_id ?? "")))) return apiError(404, "unknown_card", "Pick one of your cards.");
     let at: string | undefined;
     if (b.local_time) {
       const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(b.local_time);
