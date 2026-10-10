@@ -1,6 +1,5 @@
 {
   "enabledMcpjsonServers": [
-    "supabase",
     "openrouter-docs"
   ]
 }

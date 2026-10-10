@@ -24,7 +24,6 @@ No keys are required. Without them, Balance runs a **simulated checkout** (it ne
 
 | Variable | Turns on |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase project `ecoayjkduugrgdiekhvz`. Pre-filled in `.env.example` (public values) |
 | `OPENROUTER_API_KEY` (+ `JEV_MODEL`, default `anthropic/claude-haiku-5.5`) | JEV analysis on every purchase, the evaluation run |
 | `STRIPE_SECRET_KEY` (sandbox `sk_test_…` only; the app refuses live keys) | Real Stripe Checkout for top-ups and the Society Plan subscription |
 | `STRIPE_WEBHOOK_SECRET` | Signature-verified webhooks. Run `stripe listen --forward-to localhost:3000/api/webhooks/stripe` |
@@ -39,10 +38,6 @@ npm run eval -- openai/gpt-5-mini   # compare another OpenRouter model
 npm run seed       # regenerate the synthetic year (fixed seed)
 npm run typecheck && npm run lint
 ```
-
-### Supabase MCP (Claude Code)
-
-`.mcp.json` registers the Supabase MCP server for project `ecoayjkduugrgdiekhvz`, and `.claude/settings.json` enables it. The first time you open the repo in Claude Code, run `/mcp`, pick **supabase** and sign in with a Supabase account that's a member of the project. Ask the project owner for an invite if you don't have access.
 
 ## The 3-minute demo
 
