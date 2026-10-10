@@ -6,7 +6,7 @@ const sizes = { hero: 2000, sponsor: 1000, "empty-clear": 900 };
 for (const f of fs.readdirSync("art-src")) {
   if (!f.endsWith(".png")) continue;
   const name = f.replace(/\.png$/, "");
-  const width = sizes[name] ?? (name.startsWith("card-") ? 1000 : 512);
+  const width = sizes[name] ?? (name.startsWith("event-") ? 1400 : name.startsWith("card-") ? 1000 : 512);
   await sharp(`art-src/${f}`).resize({ width }).webp({ quality: 84 }).toFile(`${dir}/${name}.webp`);
 }
 console.log(fs.readdirSync(dir).filter((f) => f.endsWith(".webp")).join(" "));
