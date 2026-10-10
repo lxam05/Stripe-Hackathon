@@ -20,11 +20,11 @@ npm install
 npm run dev        # http://localhost:3000; the synthetic dataset is generated on first load
 ```
 
-No keys are required. Without them, Balance runs a **simulated checkout** (it never collects card details) and the **MockAdapter** card network, and JEV falls back to clearly labelled **rules-only** assessments. To turn on the real integrations, copy `.env.example` to `.env` (untracked) and fill in what you need. `.env.local` is committed and holds only the public Supabase values, so don't put secrets there.
+No keys are required. Without them, Balance runs a **simulated checkout** (it never collects card details) and the **MockAdapter** card network, and JEV falls back to clearly labelled **rules-only** assessments. To turn on the real integrations, copy `.env.example` to `.env` (untracked) and fill in what you need.
 
 | Variable | Turns on |
 |---|---|
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase project `ecoayjkduugrgdiekhvz`. Already set in the committed `.env.local` |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase project `ecoayjkduugrgdiekhvz`. Pre-filled in `.env.example` (public values) |
 | `OPENROUTER_API_KEY` (+ `JEV_MODEL`, default `anthropic/claude-haiku-5.5`) | JEV analysis on every purchase, the evaluation run |
 | `STRIPE_SECRET_KEY` (sandbox `sk_test_…` only; the app refuses live keys) | Real Stripe Checkout for top-ups and the Society Plan subscription |
 | `STRIPE_WEBHOOK_SECRET` | Signature-verified webhooks. Run `stripe listen --forward-to localhost:3000/api/webhooks/stripe` |

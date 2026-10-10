@@ -7,9 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed": "node --env-file-if-exists=.env.local --import tsx scripts/seed.ts",
-    "test": "node --env-file-if-exists=.env.local --import tsx scripts/test.ts",
-    "eval": "node --env-file-if-exists=.env.local --import tsx scripts/eval.ts",
+    "seed": "node --env-file-if-exists=.env --import tsx scripts/seed.ts",
+    "test": "node --env-file-if-exists=.env --import tsx scripts/test.ts",
+    "eval": "node --env-file-if-exists=.env --import tsx scripts/eval.ts",
     "typecheck": "tsc --noEmit",
     "art": "node scripts/process-art.mjs"
   },
