@@ -211,34 +211,30 @@ async function main() {
   check("F1", "Failure", "OpenRouter error / timeout", "Rules-only result marked AI unavailable; auth unaffected", `${f1.approved ? "approved" : `declined (${f1.declineReason})`}, ${ra.source}: ${ra.fallback_reason?.slice(0, 60)}`, f1.approved && ra.source === "rules_fallback" && /AI unavailable/.test(ra.fallback_reason));
   env.openRouterKey = "";
 
-  // J1–J3: the full JEV pipeline against a local stub of the OpenRouter API.
+  // J1–J3: the full JEV pipeline against a local stub of OpenRouter's Decisions API.
   const http = await import("node:http");
-  let mode: "high" | "bad" | "injection" = "high";
+  let mode: "high" | "bad" = "high";
   let calls = 0;
-  let lastBody: { messages: { role: string; content: string }[]; response_format?: unknown; provider?: unknown } | null = null;
+  let lastBody: { model: string; state: unknown; questions: Record<string, { type: string }> } | null = null;
   const stub = http.createServer((req, res) => {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
       calls++;
       lastBody = JSON.parse(body);
-      const content =
-        mode === "bad"
-          ? "Sorry, I can't produce JSON right now."
-          : JSON.stringify({
-              risk_score: 82,
-              risk_level: "high",
-              flags: [
-                { code: "MCC_MISMATCH", severity: "high", evidence: "Electronics store (MCC 5732) on a social Pizza Night card at 02:14" },
-                { code: "AMOUNT_OUTLIER", severity: "low", evidence: "€999 is far above anything in the input" },
-              ],
-              summary: "An electronics purchase at 2am doesn't fit a pizza social, and this purchaser normally buys food.",
-              recommended_action: "freeze_card",
-              questions_for_purchaser: ["What was bought at Electro World?"],
-              confidence: 0.85,
-            });
+      if (mode === "bad") {
+        res.writeHead(200, { "content-type": "text/plain" });
+        res.end("upstream hiccup");
+        return;
+      }
+      const flagP: Record<string, number> = { flag_MCC_MISMATCH: 0.93, flag_TIMING: 0.78 };
+      const answers: Record<string, unknown> = {
+        risk: { type: "score", score: 1.7, legend: { 0: "Routine", 1: "Worth a look", 2: "Likely improper" }, probabilities: { 0: 0.05, 1: 0.2, 2: 0.75 }, confidence: 0.85 },
+        action: { type: "choice", choice: "freeze_card", probabilities: { none: 0.02, review: 0.08, request_receipt: 0.2, freeze_card: 0.7 }, confidence: 0.7 },
+      };
+      for (const [k, q] of Object.entries(lastBody!.questions)) if (q.type === "noul") answers[k] = { type: "noul", noul: flagP[k] ?? 0.04 };
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ id: "gen-test", object: "chat.completion", created: 0, model: "stub/jev", choices: [{ index: 0, finish_reason: "stop", message: { role: "assistant", content } }], usage: { prompt_tokens: 1800, completion_tokens: 160, total_tokens: 1960, cost: 0.00042 } }));
+      res.end(JSON.stringify({ model: "typesafe/jev-stub", answers, usage: { input_tokens: 1700, output_tokens: 90, cost: 0.00007 }, id: "gen-dec-test", provider: "TypeSafe" }));
     });
   });
   await new Promise<void>((r) => stub.listen(0, "127.0.0.1", r));
@@ -251,7 +247,7 @@ async function main() {
   await assessAuthorization(j1.authorizationId!);
   const j1ra = db.prepare(`SELECT * FROM risk_assessment WHERE authorization_id=? ORDER BY rowid DESC LIMIT 1`).get(j1.authorizationId) as { source: string; risk_level: string; flags: string; cost_usd: number; action_taken: string };
   const j1card = db.prepare(`SELECT status FROM card WHERE id=?`).get(card) as { status: string };
-  const j1flags = JSON.parse(j1ra.flags) as { verified: boolean }[];
+  const j1flags = JSON.parse(j1ra.flags) as { code: string; verified: boolean }[];
   const sent = JSON.stringify(lastBody);
   check(
     "J1",
@@ -264,18 +260,18 @@ async function main() {
   check(
     "J2",
     "Failure",
-    "Hallucinated evidence in a JEV flag",
-    "Flag citing €999 (not in input) marked unverified",
-    `verified: ${j1flags.map((f) => f.verified).join(", ")}`,
-    j1flags[0]?.verified === true && j1flags[1]?.verified === false,
+    "Flag evidence comes from input fields, not the model",
+    "Both flags (category, timing) present and every € / MCC reference verified",
+    j1flags.map((f) => `${f.code}:${f.verified}`).join(", "),
+    j1flags.length === 2 && j1flags.every((f) => f.verified),
   );
   check(
     "J3",
     "Failure",
     "Privacy & request shape sent to OpenRouter",
-    "No member names/emails; schema + data_collection=deny",
-    `names ${/Cian|Murphy|ucdconnect/.test(sent) ? "LEAKED" : "absent"}, schema ${!!lastBody!.response_format}, provider ${JSON.stringify(lastBody!.provider)}`,
-    !/Cian|Murphy|ucdconnect/.test(sent) && !!lastBody!.response_format && JSON.stringify(lastBody!.provider).includes("deny"),
+    "No member names/emails; Jev model with typed risk/action questions",
+    `names ${/Cian|Murphy|ucdconnect/.test(sent) ? "LEAKED" : "absent"}, model ${lastBody!.model}, questions ${Object.keys(lastBody!.questions).length}`,
+    !/Cian|Murphy|ucdconnect/.test(sent) && lastBody!.model.startsWith("typesafe/jev") && lastBody!.questions.risk?.type === "score" && lastBody!.questions.action?.type === "choice",
   );
 
   mode = "bad";
@@ -284,11 +280,11 @@ async function main() {
   const j4 = decideAuthorization({ cardId: card, amountCents: 2000, merchantName: "APACHE PIZZA", mcc: "5814", merchantCountry: "IE", at: at("18:00") });
   await assessAuthorization(j4.authorizationId!);
   const j4ra = db.prepare(`SELECT source, fallback_reason FROM risk_assessment WHERE authorization_id=? ORDER BY rowid DESC LIMIT 1`).get(j4.authorizationId) as { source: string; fallback_reason: string };
-  check("F2b", "Failure", "JEV returns non-JSON twice (stubbed)", "One retry, then rules fallback", `${calls} calls, ${j4ra.source}: ${j4ra.fallback_reason}`, calls === 2 && j4ra.source === "rules_fallback");
+  check("F2b", "Failure", "Decisions API returns garbage twice (stubbed)", "One retry, then rules fallback", `${calls} calls, ${j4ra.source}: ${j4ra.fallback_reason}`, calls === 2 && j4ra.source === "rules_fallback");
   stub.close();
   env.openRouterKey = "";
 
-  // F2: malformed LLM output is rejected by the schema (then retried once, then rules fallback as in F1).
+  // F2: out-of-range JEV output is rejected by the schema (then retried once, then rules fallback as in F1).
   const bad = JevOutput.safeParse({ risk_score: 140, risk_level: "extreme", flags: [], summary: "", recommended_action: "approve", questions_for_purchaser: [], confidence: 2 });
   check("F2", "Failure", "JEV returns invalid JSON / out-of-schema values", "Rejected by Zod → retry → fallback", bad.success ? "accepted (bad)" : `rejected (${bad.error.issues.length} issues)`, !bad.success);
 

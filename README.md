@@ -13,6 +13,16 @@ Open http://localhost:3000. The project now runs from the repository root, not t
 
 Next loads private credentials from your ignored `.env`; see `.env.example`. Never commit secret keys. Prefer a restricted Stripe sandbox key with only the required permissions. With no Stripe key, checkout and issuing are clearly simulated. With no OpenRouter key, risk uses rules and report drafts use labelled templates.
 
+JEV runs TypeSafe's Jev decision model through OpenRouter's Decisions API after each purchase. It answers typed risk/action questions, while Balance builds the displayed explanation from recorded fields. AI never approves a purchase; an automatic freeze still requires agreement from the deterministic rules and a confident high-risk JEV result.
+
+| Variable | Turns on |
+| --- | --- |
+| `OPENROUTER_API_KEY` + `JEV_MODEL` | JEV purchase analysis and evaluation |
+| `GRANT_DRAFT_MODEL` | Optional OpenRouter chat model for report prose; without it reports use a labelled template |
+| `STRIPE_SECRET_KEY` | Sandbox Checkout; live keys are rejected |
+| `STRIPE_WEBHOOK_SECRET` | Signature-verified Stripe webhooks |
+| `ISSUING_MODE=stripe` | Sandbox Stripe Issuing instead of the local adapter |
+
 ```sh
 npm run typecheck
 npm run lint

@@ -173,7 +173,7 @@ export default async function TransactionPage({ params }: PageProps<"/transactio
                   <div className="mt-4">
                     <Notice tone={isSeed ? "info" : "warn"} title={isSeed ? "Seeded history: rules-only result" : "AI analysis unavailable: rules-only result"}>
                       {ra!.fallback_reason}
-                      {!jevEnabled() && " Add OPENROUTER_API_KEY to .env.local to enable JEV."}
+                      {!jevEnabled() && " Add OPENROUTER_API_KEY to .env to enable JEV."}
                     </Notice>
                   </div>
                 )}

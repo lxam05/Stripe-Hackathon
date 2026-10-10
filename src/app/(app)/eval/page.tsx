@@ -256,7 +256,7 @@ export default async function EvalPage() {
           </Panel>
           {!jevEnabled() && (
             <Notice tone="warn" title="JEV is offline on this machine">
-              Add <code>OPENROUTER_API_KEY</code> to <code>.env.local</code> and restart to run the JEV and combined rows.
+              Add <code>OPENROUTER_API_KEY</code> to <code>.env</code> and restart to run the JEV and combined rows.
             </Notice>
           )}
         </div>

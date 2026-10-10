@@ -100,7 +100,7 @@ State: draft → submitted → returned for revision → submitted → approved.
 
 ## 8. AI and risk
 
-JEV remains on OpenRouter via the OpenAI-compatible SDK. Risk inputs use member pseudonyms, not member emails or receipt files. Merchant text is untrusted. Structured risk output is validated; invalid responses retry then fall back to rules. Explanations include evidence checks and source labels.
+JEV remains on OpenRouter through its Decisions API using TypeSafe's Jev model. Risk inputs use member pseudonyms, not member emails or receipt files. Merchant text is untrusted. Typed decision answers are validated; invalid responses retry then fall back to rules. Balance builds explanations from recorded fields and includes evidence checks and source labels.
 
 Risk flags can raise attention after recurring matching. Auto-freeze requires agreement between scored rules and confident high-risk AI, and affects future use only. A soft threshold alone has zero risk points and cannot independently trigger an auto-freeze. Legitimate emergency substitutions should be explained, not treated as automatic misuse.
 

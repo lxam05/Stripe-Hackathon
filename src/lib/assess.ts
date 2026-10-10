@@ -2,7 +2,7 @@ import { audit, getDb, newId, nowIso } from "./db";
 import { SCORE_FLAG, TINY_AMOUNT_CENTS, type Signal } from "./authorize";
 import { setCardStatus } from "./cards";
 import { env, jevEnabled } from "./env";
-import { buildContext, callJev, PROMPT_VERSION, verifyEvidence, type JevOutput } from "./jev";
+import { buildContext, callJev, PROMPT_VERSION, verifyEvidence, type JevContext, type JevOutput } from "./jev";
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Combining rules + JEV into an action (PRD §8.6). Auto-freeze needs BOTH layers
@@ -108,7 +108,7 @@ export async function assessAuthorization(authId: string, opts: { skipJev?: bool
   if (opts.skipJev) fallbackReason = "Seeded history (JEV not run)";
   else if (!jevEnabled()) fallbackReason = "AI not configured on this server.";
 
-  let ctx: unknown = null;
+  let ctx: JevContext | null = null;
   if (!fallbackReason) {
     ctx = buildContext(authId);
     const res = await callJev(ctx);

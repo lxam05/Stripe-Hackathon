@@ -1,6 +1,6 @@
 // Runs JEV over the labelled evaluation set and prints rules vs JEV vs combined.
 //   npm run eval                     (uses JEV_MODEL)
-//   npm run eval -- openai/gpt-5-mini  (compare another OpenRouter model)
+//   npm run eval -- ~typesafe/jev-latest  (compare another Jev release)
 import { computeEval, runEval } from "../src/lib/evaluation";
 
 const model = process.argv[2];
