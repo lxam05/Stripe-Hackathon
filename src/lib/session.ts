@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { getDb } from "./db";
+import type { Role } from "./roles";
 
 // Demo "login": pick a seeded user (PRD §12 role switcher). No real auth — sandbox only.
 
@@ -9,7 +10,7 @@ export interface MemberActor {
   kind: "member";
   id: string;
   name: string;
-  role: "treasurer" | "events_officer" | "committee";
+  role: Role;
   societyId: string;
   societyName: string;
   societySlug: string;

@@ -50,7 +50,7 @@ export default async function TopUpPage({ params }: PageProps<"/s/[slug]/topup">
               <ShieldCheck className="h-4 w-4 text-ok" /> Your money goes straight into the society&rsquo;s budget, not anyone&rsquo;s pocket.
             </li>
             <li className="flex items-center gap-2">
-              <ShieldCheck className="h-4 w-4 text-ok" /> Every euro is spent on event cards with built-in limits and AI review.
+              <ShieldCheck className="h-4 w-4 text-ok" /> Every euro is spent on officer cards with built-in limits and AI review.
             </li>
           </ul>
           {(publicSponsors.length > 0 || yearTotal > 0) && (

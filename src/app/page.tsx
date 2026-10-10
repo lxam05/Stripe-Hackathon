@@ -48,7 +48,7 @@ export default async function Home() {
               <em className="text-stone-2">kept in balance.</em>
             </h1>
             <p className="mt-5 max-w-lg text-[17px] leading-relaxed text-ink-2">
-              Every event gets its own virtual card with a budget built in. Every purchase is checked twice: by hard rules in
+              Every committee officer gets a virtual card, and every event gets a budget the cards spend from. Every purchase is checked twice: by hard rules in
               real time, then by <b className="font-semibold text-ink">JEV</b>, an AI analyst that explains anything odd in
               plain English. No more fronting costs, chasing receipts or a spreadsheet nobody trusts.
             </p>
@@ -69,8 +69,8 @@ export default async function Home() {
 
       <section className="mx-auto grid max-w-[1180px] gap-4 px-5 pb-16 sm:grid-cols-3 sm:px-8">
         {[
-          { Icon: CreditCard, title: "A card per event", body: "Treasurers create “Pizza Night, €300” and the events officer gets a virtual card with that limit, blocked categories and dates attached." },
-          { Icon: ShieldCheck, title: "Rules decide, instantly", body: "Budget, blocked merchants, event dates and twelve risk signals are checked inside the card network’s authorisation window." },
+          { Icon: CreditCard, title: "Five officer cards", body: "Each society gets five virtual cards for its officers. Point the events officer’s card at “Pizza Night, €300” and it spends from that budget, within the event’s dates." },
+          { Icon: ShieldCheck, title: "Rules decide, instantly", body: "Budgets, card limits, blocked merchants, event dates and thirteen risk signals are checked inside the card network’s authorisation window." },
           { Icon: Sparkles, title: "JEV explains", body: "An AI analyst (via OpenRouter) compares each purchase with the society’s history and flags what doesn’t fit, with evidence you can check." },
         ].map(({ Icon, title, body }) => (
           <div key={title} className="rounded-2xl border border-line bg-surface/80 p-5">

@@ -11,7 +11,7 @@ Balance uses **public reference data** plus a **clearly labelled synthetic datas
 
 ## Synthetic dataset
 
-* **5 fictional societies:** Drama, Robotics, Law, Hillwalking, E-Sports, each with 3–4 committee members. Names are invented; emails use the reserved-style domain `ucdconnect.example`.
+* **5 fictional societies:** Drama, Robotics, Law, Hillwalking, E-Sports, each with 5 committee officers (treasurer, events officer, chair, secretary, PRO) holding one officer card each. Names are invented; emails use the reserved-style domain `ucdconnect.example`.
 * **106 events** built from per-society templates (e.g. Drama: *Freshers' Showcase*, *Winter Play*, *Cast Party*; Hillwalking: *Wicklow Day Hike*, *Snowdonia Trip*), weighted to term time (15 Sept–5 Dec, 20 Jan–17 Apr).
 * **~443 purchases.** Amounts are log-normal around a per-(society, merchant) median with σ = 0.35, clustered in the 10 days before each event. Restaurant captures sometimes include a ~10% tip, so the captured amount differs from the hold.
 * **Merchant descriptors** use real chain names (Domino's, Tesco, Ryanair) only as plausible card-statement text. No real transactions are implied.
@@ -39,7 +39,8 @@ The 2025/26 purchases are split **70% history / 30% evaluation**, *stratified by
 
 * Typical Irish student-event prices: e.g. pizza ≈ €2–4 per head, coach hire €400–500/day, hostel €25–40 per person per night. These are our estimates for plausibility, not CSO statistics.
 * Alcohol (MCC 5813/5921) is **review**, not blocked. UCD/SU policy on society alcohol spend is unverified, so it's configurable by the Societies Office.
-* Per-event cards match how societies budget (assumption A5 in the PRD).
+* Five officer cards per society, pointed at event budgets, match how committees actually spend (assumption A5 in the PRD).
+* Card limits in the synthetic data are sized from each officer's own purchases: the per-purchase cap covers their largest normal purchase, and the monthly limit leaves 20% headroom over their busiest month. Large one-off bills (hostels, ball dinners) go on the treasurer's card.
 
 ## Baselines for claims
 

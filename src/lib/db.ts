@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS member (
   society_id TEXT NOT NULL REFERENCES society(id),
   name TEXT NOT NULL,
   email TEXT NOT NULL,
-  role TEXT NOT NULL,                                -- treasurer | events_officer | committee
+  role TEXT NOT NULL,                                -- treasurer | events_officer | chair | secretary | pro | committee
   member_ref TEXT NOT NULL UNIQUE,                   -- pseudonym sent to JEV
   stripe_cardholder_id TEXT,
   cardholder_created_at TEXT,
@@ -44,10 +44,13 @@ CREATE TABLE IF NOT EXISTS event (
   created_at TEXT NOT NULL
 );
 
+-- Officer cards: up to 5 live cards per society, one per committee member.
+-- event_id is the open event the card is currently spending for (NULL = general spending).
 CREATE TABLE IF NOT EXISTS card (
   id TEXT PRIMARY KEY,
-  event_id TEXT NOT NULL REFERENCES event(id),
+  society_id TEXT NOT NULL REFERENCES society(id),
   member_id TEXT NOT NULL REFERENCES member(id),
+  event_id TEXT REFERENCES event(id),
   network TEXT NOT NULL,                             -- mock | stripe
   stripe_card_id TEXT UNIQUE,
   last4 TEXT NOT NULL,
@@ -56,9 +59,11 @@ CREATE TABLE IF NOT EXISTS card (
   status TEXT NOT NULL,                              -- pending | active | inactive | canceled
   status_reason TEXT,
   per_auth_cap_cents INTEGER NOT NULL,
+  monthly_limit_cents INTEGER NOT NULL,
   error TEXT,
   created_at TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS card_society ON card(society_id, status);
 
 CREATE TABLE IF NOT EXISTS ledger_entry (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,7 +97,7 @@ CREATE TABLE IF NOT EXISTS authorization (
   id TEXT PRIMARY KEY,
   stripe_auth_id TEXT UNIQUE,
   card_id TEXT NOT NULL REFERENCES card(id),
-  event_id TEXT NOT NULL,
+  event_id TEXT,                                     -- NULL = general society spending
   society_id TEXT NOT NULL,
   member_id TEXT NOT NULL,
   amount_cents INTEGER NOT NULL,
@@ -242,8 +247,21 @@ function open(): DB {
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
   db.pragma("busy_timeout = 3000");
+  // Databases from before officer cards (one card per event) can't be migrated in place.
+  // The data is synthetic, so drop it; ensureSeeded() regenerates it on the next page load.
+  const cardCols = db.prepare(`PRAGMA table_info(card)`).all() as { name: string }[];
+  if (cardCols.length && !cardCols.some((c) => c.name === "monthly_limit_cents")) dropAll(db);
   db.exec(SCHEMA);
   return db;
+}
+
+function dropAll(db: DB) {
+  const tables = db
+    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`)
+    .all() as { name: string }[];
+  db.pragma("foreign_keys = OFF");
+  for (const t of tables) db.exec(`DROP TABLE IF EXISTS "${t.name}"`);
+  db.pragma("foreign_keys = ON");
 }
 
 export function getDb(): DB {
@@ -253,12 +271,7 @@ export function getDb(): DB {
 
 export function resetDb() {
   const db = getDb();
-  const tables = db
-    .prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`)
-    .all() as { name: string }[];
-  db.pragma("foreign_keys = OFF");
-  for (const t of tables) db.exec(`DROP TABLE IF EXISTS "${t.name}"`);
-  db.pragma("foreign_keys = ON");
+  dropAll(db);
   db.exec(SCHEMA);
 }
 

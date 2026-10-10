@@ -36,7 +36,7 @@ export const SOCIETY_PLAN = {
   currency: "eur",
   interval: "year" as const,
   perks: [
-    "Up to 10 active event cards at once",
+    "5 virtual officer cards, each with its own limits",
     "JEV risk analysis on every purchase",
     "Public sponsor top-up page + QR code",
     "Live ledger that reconciles itself",

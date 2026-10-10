@@ -3,6 +3,8 @@ import { env, SOCIETY_PLAN, stripeEnabled } from "./env";
 import { postEntry } from "./ledger";
 import { fmtEur } from "./money";
 import { getStripe } from "./stripe";
+import { UserError } from "./errors";
+import { reactivatePlanCards } from "./cards";
 
 // Stripe Checkout (PRD §6.1, §9.4). With STRIPE_SECRET_KEY set these create real
 // sandbox Checkout Sessions. Without it, a clearly-labelled simulated checkout
@@ -11,15 +13,7 @@ import { getStripe } from "./stripe";
 export const TOPUP_MIN_CENTS = 500;
 export const TOPUP_MAX_CENTS = 1_000_000;
 
-export class UserError extends Error {
-  constructor(
-    public code: string,
-    message: string,
-    public status = 400,
-  ) {
-    super(message);
-  }
-}
+export { UserError };
 
 interface SocietyRow {
   id: string;
@@ -174,7 +168,7 @@ export async function activatePlanFromSession(sessionId: string, source: string)
   const sub = s.subscription && typeof s.subscription === "object" ? s.subscription : null;
   const invoice = s.invoice && typeof s.invoice === "object" ? s.invoice : null;
   const periodEnd = sub?.items?.data?.[0]?.current_period_end;
-  activatePlan(s.metadata!.society_id!, {
+  await activatePlan(s.metadata!.society_id!, {
     customerId: typeof s.customer === "string" ? s.customer : (s.customer?.id ?? null),
     subscriptionId: sub?.id ?? (typeof s.subscription === "string" ? s.subscription : null),
     renewsAt: periodEnd ? new Date(periodEnd * 1000).toISOString() : null,
@@ -184,7 +178,7 @@ export async function activatePlanFromSession(sessionId: string, source: string)
   return true;
 }
 
-export function activatePlan(
+export async function activatePlan(
   societyId: string,
   p: { customerId: string | null; subscriptionId: string | null; renewsAt: string | null; invoiceId?: string | null; source: string },
 ) {
@@ -197,13 +191,14 @@ export function activatePlan(
     )
     .run(renews, p.customerId, p.subscriptionId, societyId);
   if (r.changes) audit(p.source, "plan.activated", societyId, { subscription: p.subscriptionId, invoice: p.invoiceId });
+  await reactivatePlanCards(societyId, p.source);
 }
 
 /** Simulated checkout completion (no Stripe keys): same fulfilment functions as the webhook. */
-export function completeMockCheckout(sessionId: string) {
+export async function completeMockCheckout(sessionId: string) {
   if (sessionId.startsWith("mock_plan_")) {
     const societyId = sessionId.slice("mock_plan_".length);
-    activatePlan(societyId, {
+    await activatePlan(societyId, {
       customerId: `mock_cus_${societyId}`,
       subscriptionId: `mock_sub_${societyId}`,
       renewsAt: null,

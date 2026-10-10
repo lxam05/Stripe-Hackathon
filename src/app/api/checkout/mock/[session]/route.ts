@@ -8,7 +8,7 @@ export async function POST(_req: Request, ctx: RouteContext<"/api/checkout/mock/
   if (stripeEnabled()) return apiError(400, "stripe_configured", "Stripe is configured; use the real Checkout page.");
   try {
     const { session } = await ctx.params;
-    return NextResponse.json(completeMockCheckout(session));
+    return NextResponse.json(await completeMockCheckout(session));
   } catch (e) {
     return handleError(e);
   }

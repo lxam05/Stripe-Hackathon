@@ -1,7 +1,7 @@
 {
-  "ran_at": "2026-10-10T10:19:49.752Z",
-  "passed": 27,
-  "total": 27,
+  "ran_at": "2026-10-10T10:47:31.617Z",
+  "passed": 32,
+  "total": 32,
   "results": [
     {
       "id": "O2",
@@ -33,6 +33,14 @@
       "name": "Top-up €5 / €10,000 / €4.99 / €10,000.01",
       "expected": "accepted, accepted, rejected, rejected",
       "actual": "accepted, accepted, rejected, rejected",
+      "pass": true
+    },
+    {
+      "id": "O4",
+      "kind": "Ordinary",
+      "name": "Plan renewed: lapsed officer cards wake up",
+      "expected": "5 of 5 cards active",
+      "actual": "5 of 5 active",
       "pass": true
     },
     {
@@ -76,6 +84,22 @@
       "pass": true
     },
     {
+      "id": "G1",
+      "kind": "Ordinary",
+      "name": "€20 on an unassigned officer card",
+      "expected": "Approved as general spending (no event)",
+      "actual": "approved, event none",
+      "pass": true
+    },
+    {
+      "id": "G2",
+      "kind": "Boundary",
+      "name": "Unallocated money + €0.01 on an unassigned card",
+      "expected": "Declined (H3): open events' money is reserved",
+      "actual": "insufficient_budget",
+      "pass": true
+    },
+    {
       "id": "B3",
       "kind": "Boundary",
       "name": "Amount exactly at the per-purchase cap",
@@ -89,6 +113,22 @@
       "name": "Cap + €0.01",
       "expected": "Declined by card spending control",
       "actual": "spending_controls",
+      "pass": true
+    },
+    {
+      "id": "B9",
+      "kind": "Boundary",
+      "name": "Monthly card limit exactly reached, then + €0.01",
+      "expected": "Approved, then declined (H6)",
+      "actual": "approved, then spending_controls (H6)",
+      "pass": true
+    },
+    {
+      "id": "B8",
+      "kind": "Boundary",
+      "name": "Issue a sixth officer card",
+      "expected": "Rejected: 5 cards per society",
+      "actual": "rejected (card_limit)",
       "pass": true
     },
     {
@@ -206,9 +246,9 @@
     {
       "id": "F10",
       "kind": "Failure",
-      "name": "Stripe API error creating the card",
-      "expected": "Event saved, card pending with a clear error",
-      "actual": "event saved, card pending: Invalid API Key provided: sk_test_****************",
+      "name": "Stripe API error issuing an officer card",
+      "expected": "Card saved as pending with a clear error; retry possible",
+      "actual": "card pending: Invalid API Key provided: sk_test_****************",
       "pass": true
     },
     {
