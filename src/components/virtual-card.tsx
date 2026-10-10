@@ -3,16 +3,17 @@ import { Ban, CreditCard, LoaderCircle, Snowflake } from "lucide-react";
 import { cx } from "./ui";
 import { LogoMark } from "./logo";
 
+// Event covers are scenes of the event itself, so they never look like a payment card.
 const EVENT_ART: Record<string, string> = {
-  social: "/art/card-social.webp",
-  academic: "/art/card-academic.webp",
-  sport: "/art/card-sport.webp",
-  trip: "/art/card-trip.webp",
-  other: "/art/card-social-alt.webp",
+  social: "/art/event-social.webp",
+  academic: "/art/event-academic.webp",
+  sport: "/art/event-sport.webp",
+  trip: "/art/event-trip.webp",
+  other: "/art/event-other.webp",
 };
 
 /** Cover art for an event type. */
-export function cardArt(type: string) {
+export function eventArt(type: string) {
   return EVENT_ART[type] ?? EVENT_ART.other;
 }
 
@@ -26,7 +27,7 @@ const ROLE_ART: Record<string, string> = {
 
 /** Each officer's card has its own artwork so the five are easy to tell apart. */
 export function roleArt(role: string) {
-  return ROLE_ART[role] ?? EVENT_ART.other;
+  return ROLE_ART[role] ?? "/art/card-social-alt.webp";
 }
 
 export function VirtualCard({
@@ -128,7 +129,7 @@ export function VirtualCard({
 export function EventCover({ name, type, typeLabel, size = "sm" }: { name: string; type: string; typeLabel: string; size?: "sm" | "md" }) {
   return (
     <div className={cx("relative w-full overflow-hidden rounded-xl text-white", size === "sm" ? "aspect-[2.6]" : "aspect-[2.2]")}>
-      <Image src={cardArt(type)} alt="" fill sizes="420px" className="object-cover" />
+      <Image src={eventArt(type)} alt="" fill sizes="(min-width: 1024px) 420px, 100vw" className="object-cover" />
       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent" />
       <div className={cx("absolute inset-x-0 bottom-0", size === "sm" ? "p-3" : "p-4")}>
         <div className={cx("font-medium uppercase tracking-[0.14em] opacity-85", size === "sm" ? "text-[10px]" : "text-[11px]")}>{typeLabel}</div>
