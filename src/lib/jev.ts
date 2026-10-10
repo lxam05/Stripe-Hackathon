@@ -16,7 +16,7 @@ import type { Signal } from "./authorize";
 // or moves money.
 // ───────────────────────────────────────────────────────────────────────────────
 
-export const PROMPT_VERSION = "jev-decisions-v2.0";
+export const PROMPT_VERSION = "jev-decisions-v2.1";
 
 const FLAG_CODES = [
   "MCC_MISMATCH",
@@ -59,7 +59,7 @@ const RISK_LEVELS = ["low", "medium", "high"] as const;
 const RISK_QUESTION = {
   type: "score",
   instructions:
-    "How likely is this card purchase to be improper spending for this UCD student society (personal use, wrong category for the event, policy breach or manipulation)? Most society purchases are legitimate: food, printing, room hire, equipment, transport, tickets, costumes and reasonable emergency substitutions are normal. Event budgets, dates and card thresholds are advisory review signals, not proof of misuse. Purchases similar to precedents approved by the treasurer are normal.",
+    "How likely is this card purchase to be improper spending for this UCD student society (personal use, wrong category for the event, policy breach or manipulation)? Most society purchases are legitimate: food, printing, room hire, equipment, transport, tickets, costumes and reasonable emergency substitutions are normal. Food and drink for members (fast food, takeaway, restaurants, groceries) is ordinary spending for every society. A new card or a purchaser with no purchase history is not suspicious on its own. Event budgets, dates and card thresholds are advisory review signals, not proof of misuse. Purchases similar to precedents approved by the treasurer are normal.",
   criteria: [
     "Routine: fits the society, the event and the purchaser's history",
     "Worth a look: one or two specific oddities a treasurer should check",
@@ -80,10 +80,11 @@ const ACTION_QUESTION = {
 
 const FLAG_QUESTIONS: Partial<Record<FlagCode, string>> = {
   MCC_MISMATCH:
-    "The merchant category (purchase.merchant.mcc_label) does not fit the event it was bought for (event.name, event.type, event.notes), or, when event is null, does not fit the society's purpose (society.category) or the card holder's role.",
+    "The merchant category (purchase.merchant.mcc_label) does not fit the event it was bought for (event.name, event.type, event.notes), or, when event is null, does not fit the society's purpose (society.category) or the card holder's role. Food and drink for members (fast food, takeaway, restaurants, groceries) fits every society and every event.",
   AMOUNT_OUTLIER:
     "purchase.amount_eur is unusually large for this kind of purchase compared with society.mcc_profile medians and the event's expected_attendees. A review-threshold overage alone is not misuse.",
-  PURCHASER_PATTERN: "The purchase is out of character for this purchaser compared with purchaser.recent_purchases.",
+  PURCHASER_PATTERN:
+    "The purchase is out of character for this purchaser compared with purchaser.recent_purchases. A purchaser with fewer than 3 recent purchases has no pattern to break.",
   TIMING:
     "The purchase time (purchase.local_time) is implausible for society business, e.g. in the middle of the night or long after the event's end date.",
   SPLIT_PURCHASE:
@@ -393,6 +394,8 @@ export function toJevOutput(answers: Answers, ctx: JevContext): JevOutput {
       return { code: code as FlagCode, p: a.noul };
     })
     .filter((f) => f.p >= FLAG_AT)
+    // Like rule R10: with fewer than 3 prior purchases there is no pattern to break.
+    .filter((f) => f.code !== "PURCHASER_PATTERN" || ctx.purchaser.recent_purchases.length >= 3)
     .sort((x, y) => y.p - x.p);
 
   return JevOutput.parse({

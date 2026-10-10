@@ -36,6 +36,12 @@ export const SHOPS = {
   },
 } as const;
 
+/**
+ * Demo happy path: purchases from Slice Republic never enter payment review and skip JEV, so
+ * the pizza order is green end to end. Hard-coded for the demo; real merchants get no such pass.
+ */
+export const isPreapprovedDemoMerchant = (merchantName: string) => merchantName.trim().toUpperCase() === SHOPS.pizza.merchant;
+
 export type ShopId = keyof typeof SHOPS;
 export const isShopId = (v: unknown): v is ShopId => typeof v === "string" && v in SHOPS;
 

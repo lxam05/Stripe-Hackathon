@@ -7,6 +7,7 @@ import { ROLE_LABEL } from "@/lib/roles";
 import type { Actor } from "@/lib/session";
 import { Logo } from "./logo";
 import { NavLinks, type NavItem } from "./nav-links";
+import { SessionSync } from "./session-sync";
 import { SwitchUser } from "./switch-user";
 
 export function AppShell({ actor, children }: { actor: Actor; children: ReactNode }) {
@@ -49,6 +50,7 @@ export function AppShell({ actor, children }: { actor: Actor; children: ReactNod
 
   return (
     <div className="min-h-screen lg:grid lg:grid-cols-[260px_1fr]">
+      <SessionSync actorId={actor.id} />
       {/* Sidebar (desktop) */}
       <aside className="sticky top-0 hidden h-screen flex-col border-r border-line bg-paper/80 px-4 py-5 backdrop-blur lg:flex">
         <Link href={actor.kind === "admin" ? "/admin" : "/dashboard"} className="px-2">

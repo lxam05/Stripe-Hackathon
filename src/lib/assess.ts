@@ -3,6 +3,7 @@ import { SCORE_FLAG, TINY_AMOUNT_CENTS, type Signal } from "./authorize";
 import { setCardStatus } from "./cards";
 import { env, jevEnabled } from "./env";
 import { buildContext, callJev, PROMPT_VERSION, verifyEvidence, type JevContext, type JevOutput } from "./jev";
+import { isPreapprovedDemoMerchant } from "./shops";
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Combining rules + JEV into an action (PRD §8.6). Auto-freeze needs BOTH layers
@@ -118,6 +119,7 @@ export async function assessAuthorization(authId: string, opts: { skipJev?: bool
   let jev: JevOutput | null = null;
   let fallbackReason: string | null = null;
   if (opts.skipJev) fallbackReason = "Seeded history (JEV not run)";
+  else if (isPreapprovedDemoMerchant(a.merchant_name)) fallbackReason = "Pre-approved demo merchant (JEV not run)";
   else if (!jevEnabled()) fallbackReason = "AI not configured on this server.";
 
   let ctx: JevContext | null = null;
@@ -175,7 +177,7 @@ function insertAssessment(authId: string, f: Record<string, unknown>) {
 }
 
 async function applyOutcome(a: AuthRow, outcome: PolicyOutcome, reason: string, actor: string) {
-  if (!outcome.flag) return;
+  if (!outcome.flag || isPreapprovedDemoMerchant(a.merchant_name)) return;
   const db = getDb();
   db.prepare(`UPDATE payment_review SET status='pending',reason=? WHERE authorization_id=? AND status IN ('recurring_approved','not_required')`).run(
     `JEV: ${reason}`,

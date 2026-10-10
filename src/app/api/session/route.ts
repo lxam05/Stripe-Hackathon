@@ -1,7 +1,13 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/lib/db";
-import { ACTOR_COOKIE } from "@/lib/session";
+import { ACTOR_COOKIE, getActor } from "@/lib/session";
 import { apiError } from "@/lib/api";
+
+/** GET /api/session: who this browser is signed in as (lets other tabs notice a user switch). */
+export async function GET() {
+  const actor = await getActor();
+  return NextResponse.json({ actor: actor?.id ?? null });
+}
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as { actor?: string };

@@ -6,6 +6,7 @@ import { UserError } from "./errors";
 import { mccInfo } from "./mcc";
 import { addDays, dublinParts, fmtEur } from "./money";
 import { resolvePolicy } from "./policy";
+import { isPreapprovedDemoMerchant } from "./shops";
 import { CARD_RESTRICTION_PROFILES, profileAllowsMcc, type CardRestrictionProfile } from "./card-restrictions";
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -466,7 +467,8 @@ export function decideAuthorization(input: PurchaseInput): Decision {
 
     if (approved) {
       const exceptions=signals.filter(s=>["H2","H5","H6","E1","R1","R5","R6","R8","R9","R13"].includes(s.id));
-      recordPaymentReview({ id,societyId:card.society_id,memberId:card.member_id,key,amount:input.amountCents,currency,at:input.at,exception:exceptions.length>0 || score>=SCORE_FLAG,reason:exceptions.map(s=>s.evidence).join("; ") });
+      const preapproved = isPreapprovedDemoMerchant(input.merchantName);
+      recordPaymentReview({ id,societyId:card.society_id,memberId:card.member_id,key,amount:input.amountCents,currency,at:input.at,exception:!preapproved && (exceptions.length>0 || score>=SCORE_FLAG),reason:exceptions.map(s=>s.evidence).join("; ") });
       postEntry({
         societyId: card.society_id,
         eventId: event?.id ?? null,
