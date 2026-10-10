@@ -1,4 +1,7 @@
 import Image from "next/image";
+import Link from "next/link";
+import { WorkflowForm } from "@/components/workflow-form";
+import { listMembers } from "@/lib/queries";
 import { CircleCheck, OctagonX } from "lucide-react";
 import { PolicyEditor } from "@/components/policy-editor";
 import { ResetDemo } from "@/components/reset-demo";
@@ -29,10 +32,12 @@ export default async function AdminPage() {
 
   return (
     <>
-      <PageHeader eyebrow="UCD Societies Office" title="All societies">
-        Policy is enforced at the card, not discovered at audit. One Stripe Issuing balance for UCD; per-society budgets live in Balance&rsquo;s ledger.
+      <PageHeader eyebrow="Societies Council" title="All societies">
+        Create societies and assign their treasurer and optional senior treasurer. Review spending reports and record grant interview decisions.
       </PageHeader>
 
+      <Panel className="mb-6"><SectionTitle>Create a society</SectionTitle><WorkflowForm resource="societies" actions={[{value:"create",label:"Create society and assign roles"}]} fields={[{name:"name",label:"Society name",required:true},{name:"slug",label:"URL slug (lowercase letters and hyphens)",required:true},{name:"treasurerName",label:"Treasurer name (required)",required:true},{name:"treasurerEmail",label:"Treasurer email",type:"email",required:true},{name:"seniorName",label:"Senior treasurer name (optional)"},{name:"seniorEmail",label:"Senior treasurer email (optional)",type:"email"}]}/><Link href="/reports" className="mt-4 block text-sm underline">Open Council grant reviews →</Link></Panel>
+      <details className="mb-6 rounded-2xl border border-line p-5"><summary className="cursor-pointer font-medium">Manage reporting roles</summary><div className="mt-4 space-y-5">{socs.map(s=>{const m=listMembers(s.id);const options=m.map(x=>({value:x.id,label:x.name}));return <Panel key={s.id}><SectionTitle>{s.name}</SectionTitle><WorkflowForm resource="leadership" id={s.id} fields={[{name:"treasurerId",label:"Treasurer (required)",type:"select",value:m.find(x=>x.role === "treasurer")?.id,options,required:true},{name:"seniorId",label:"Senior treasurer",type:"select",value:m.find(x=>x.role === "senior_treasurer")?.id ?? "",options:[{value:"",label:"None · treasurer takes over"},...options]}]}/></Panel>})}</div></details>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <StatTile label="Available across societies" cents={totals.available} />
         <StatTile label="Held" cents={totals.held} tone="held" />

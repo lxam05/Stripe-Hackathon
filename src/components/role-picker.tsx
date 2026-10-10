@@ -67,7 +67,7 @@ export function RolePicker({ personas, others }: { personas: Persona[]; others: 
         ))}
       </div>
       <details className="mt-4 rounded-2xl border border-line bg-surface/70 px-4 py-3 text-sm">
-        <summary className="cursor-pointer text-ink-2">Sign in as another society&rsquo;s treasurer</summary>
+        <summary className="cursor-pointer text-ink-2">More demo members and societies</summary>
         <div className="mt-3 grid gap-2 sm:grid-cols-2">
           {others.map((p) => (
             <button key={p.actor} onClick={() => choose(p.actor)} disabled={pending} className="flex items-center gap-3 rounded-xl p-2 text-left hover:bg-paper-2">

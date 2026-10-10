@@ -5,6 +5,8 @@ import { fmtEur } from "./money";
 import { getStripe } from "./stripe";
 import { UserError } from "./errors";
 import { reactivatePlanCards } from "./cards";
+import { assertTreasurer } from "./access";
+import type { Actor } from "./session";
 
 // Stripe Checkout (PRD §6.1, §9.4). With STRIPE_SECRET_KEY set these create real
 // sandbox Checkout Sessions. Without it, a clearly-labelled simulated checkout
@@ -164,7 +166,7 @@ export async function createPlanCheckout(societyId: string): Promise<{ url: stri
 
 export async function activatePlanFromSession(sessionId: string, source: string) {
   const s = await getStripe().checkout.sessions.retrieve(sessionId, { expand: ["subscription", "invoice"] });
-  if (s.status !== "complete" || s.metadata?.kind !== "plan") return false;
+  if (s.status !== "complete" || s.payment_status !== "paid" || s.metadata?.kind !== "plan") return false;
   const sub = s.subscription && typeof s.subscription === "object" ? s.subscription : null;
   const invoice = s.invoice && typeof s.invoice === "object" ? s.invoice : null;
   const periodEnd = sub?.items?.data?.[0]?.current_period_end;
@@ -196,6 +198,10 @@ export async function activatePlan(
 
 /** Simulated checkout completion (no Stripe keys): same fulfilment functions as the webhook. */
 export async function completeMockCheckout(sessionId: string) {
+  if (sessionId.startsWith("mock_slot_")) {
+    fulfilCardSlot(sessionId, "mock_checkout");
+    return { kind:"slot" as const,redirect:"/plan?slot_added=1" };
+  }
   if (sessionId.startsWith("mock_plan_")) {
     const societyId = sessionId.slice("mock_plan_".length);
     await activatePlan(societyId, {
@@ -213,4 +219,38 @@ export async function completeMockCheckout(sessionId: string) {
     .get(sessionId) as { slug: string } | undefined;
   if (!t || !res.topupId) throw new UserError("unknown_session", "This checkout session doesn't exist.", 404);
   return { kind: "topup" as const, redirect: `/s/${t.slug}/topup/success?session_id=${sessionId}` };
+}
+
+export async function createCardSlotCheckout(actor: Actor) {
+  if (actor.kind !== "member") throw new UserError("forbidden","Only a society treasurer can buy card slots.",403);
+  assertTreasurer(actor,actor.societyId);
+  const db=getDb();
+  const soc=db.prepare(`SELECT name,plan_status,plan_renews_at FROM society WHERE id=?`).get(actor.societyId) as { name:string;plan_status:string;plan_renews_at:string };
+  if (soc.plan_status !== "active" || !soc.plan_renews_at || soc.plan_renews_at<=nowIso()) throw new UserError("plan_required","Renew the Society Plan first.");
+  const id=newId("slot");
+  db.prepare(`INSERT INTO card_slot_purchase(id,society_id,expires_at,created_at) VALUES(?,?,?,?)`).run(id,actor.societyId,soc.plan_renews_at,nowIso());
+  let sessionId=`mock_slot_${id}`,url=`/checkout/mock/${sessionId}`;
+  if (stripeEnabled()) {
+    const s=await getStripe().checkout.sessions.create({
+      mode:"payment", integration_identifier:"balance-extra-card-abcdefgh",
+      line_items:[{ quantity:1,price_data:{currency:"eur",unit_amount:1000,product_data:{name:"One additional committee card slot",description:`${soc.name} · valid until ${soc.plan_renews_at.slice(0,10)}. No automatic renewal.`}}}],
+      metadata:{kind:"card_slot",society_id:actor.societyId,slot_id:id},
+      success_url:`${env.appUrl}/plan?slot_added=1`,cancel_url:`${env.appUrl}/plan?canceled=1`,
+    },{idempotencyKey:id});
+    sessionId=s.id;url=s.url!;
+  }
+  db.prepare(`UPDATE card_slot_purchase SET checkout_session_id=? WHERE id=?`).run(sessionId,id);
+  return {url};
+}
+/** Called only by a verified paid webhook, or the explicitly simulated checkout. */
+export function fulfilCardSlot(sessionId:string,source:string) {
+  const db=getDb();
+  return db.transaction(()=>{
+    const p=db.prepare(`SELECT * FROM card_slot_purchase WHERE checkout_session_id=?`).get(sessionId) as {id:string;status:string;society_id:string} | undefined;
+    if (!p) throw new UserError("not_found","Card slot checkout not found.",404);
+    if (p.status === "paid") return false;
+    db.prepare(`UPDATE card_slot_purchase SET status='paid' WHERE id=?`).run(p.id);
+    audit(source,"card_slot.paid",p.id,{societyId:p.society_id});
+    return true;
+  }).immediate();
 }

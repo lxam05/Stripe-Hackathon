@@ -1,6 +1,8 @@
 import { getDb, newId } from "./db";
-import { cardMonthSpend } from "./cards";
-import { committedToOpenEvents, eventRemaining, postEntry, societyBalances } from "./ledger";
+import { cardMonthSpend, cardHasSlot } from "./cards";
+import { eventRemaining, postEntry, societyBalances } from "./ledger";
+import { merchantKey, recordPaymentReview } from "./recurring";
+import { UserError } from "./errors";
 import { mccInfo } from "./mcc";
 import { addDays, dublinParts, fmtEur } from "./money";
 import { resolvePolicy } from "./policy";
@@ -24,6 +26,8 @@ export interface PurchaseInput {
   cardId: string;
   amountCents: number;
   merchantName: string;
+  merchantId?: string;
+  currency?: string;
   mcc: string;
   merchantCity?: string;
   merchantCountry: string;
@@ -81,13 +85,17 @@ function hoursBefore(iso: string, h: number) {
 function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow | null, member: { id: string; cardholder_created_at: string | null }) {
   const db = getDb();
   const signals: Signal[] = [];
+  if(input.source !== "seed") {
+    const plan=db.prepare(`SELECT plan_status,plan_renews_at FROM society WHERE id=?`).get(card.society_id) as {plan_status:string;plan_renews_at:string|null};
+    if(plan.plan_status !== "active" || (plan.plan_renews_at && plan.plan_renews_at<=new Date().toISOString()) || !cardHasSlot(card.id,card.society_id)) signals.push({id:"H1",label:"Card entitlement inactive",points:0,hard:true,evidence:"Renew the Society Plan or extra card slot before using this card."});
+  }
   const amount = input.amountCents;
   const mcc = mccInfo(input.mcc);
   const local = dublinParts(input.at);
   const societyId = card.society_id;
 
   // ── Hard rules ────────────────────────────────────────────────────────────
-  if (card.status !== "active" || (event && event.status !== "open")) {
+  if (card.status !== "active") {
     const what =
       card.status === "inactive"
         ? "card is frozen"
@@ -105,7 +113,7 @@ function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow | n
         id: "H2",
         label: "Outside event window",
         points: 0,
-        hard: true,
+        hard: false,
         evidence: `Purchase on ${local.date}; “${event.name}” spending runs ${earliest} → ${latest}`,
         data: { purchase_date: local.date, earliest, latest },
       });
@@ -117,10 +125,10 @@ function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow | n
   if (amount > card.per_auth_cap_cents) {
     signals.push({
       id: "H5",
-      label: "Over per-purchase cap",
+      label: "Over purchase review threshold",
       points: 0,
-      hard: true,
-      evidence: `${fmtEur(amount)} is over the card's ${fmtEur(card.per_auth_cap_cents)} per-purchase limit`,
+      hard: false,
+      evidence: `${fmtEur(amount)} is over the ${fmtEur(card.per_auth_cap_cents)} review threshold; payment allowed, treasurer review required`,
     });
   }
 
@@ -128,9 +136,9 @@ function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow | n
   if (monthSpent + amount > card.monthly_limit_cents) {
     signals.push({
       id: "H6",
-      label: "Over monthly card limit",
+      label: "Over monthly review threshold",
       points: 0,
-      hard: true,
+      hard: false,
       evidence: `${fmtEur(amount)} would take this card to ${fmtEur(monthSpent + amount)} this month, over its ${fmtEur(card.monthly_limit_cents)} monthly limit`,
       data: { month_spent: monthSpent, monthly_limit: card.monthly_limit_cents },
     });
@@ -139,31 +147,27 @@ function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow | n
   const soc = societyBalances(societyId);
   if (event) {
     const ev = eventRemaining(event.id, event.budget_cents);
-    const limit = Math.min(ev.remaining, soc.available);
-    if (amount > limit) {
-      const which = ev.remaining <= soc.available ? "event budget" : "society balance";
+    if (amount > ev.remaining) {
       signals.push({
-        id: "H3",
-        label: "Insufficient budget",
+        id: "E1",
+        label: "Event budget exceeded",
         points: 0,
-        hard: true,
-        evidence: `${fmtEur(amount)} exceeds remaining ${which} (${fmtEur(Math.max(0, limit))})`,
+        hard: false,
+        evidence: `${fmtEur(amount)} exceeds remaining event budget (${fmtEur(Math.max(0, ev.remaining))}); review required`,
         data: { amount, event_remaining: ev.remaining, society_available: soc.available },
       });
     }
-  } else {
-    const unallocated = soc.available - committedToOpenEvents(societyId);
-    if (amount > unallocated) {
+  }
+    if (amount > soc.available) {
       signals.push({
         id: "H3",
         label: "Insufficient budget",
         points: 0,
         hard: true,
-        evidence: `${fmtEur(amount)} exceeds the society's unallocated money (${fmtEur(Math.max(0, unallocated))}); the rest is reserved for open events`,
-        data: { amount, society_available: soc.available, unallocated },
+        evidence: `${fmtEur(amount)} exceeds available society funds (${fmtEur(Math.max(0, soc.available))})`,
+        data: { amount, society_available: soc.available },
       });
     }
-  }
 
   const policy = resolvePolicy(societyId, input.mcc);
   if (policy.action === "block") {
@@ -360,6 +364,7 @@ const HARD_CODES: Record<string, string> = {
  * remaining budget (test F9).
  */
 export function decideAuthorization(input: PurchaseInput): Decision {
+  if (!Number.isSafeInteger(input.amountCents) || input.amountCents <= 0 || !Number.isFinite(Date.parse(input.at))) throw new UserError("validation", "A purchase needs a positive amount in cents and a valid timestamp.");
   const t0 = performance.now();
   const db = getDb();
 
@@ -411,10 +416,6 @@ export function decideAuthorization(input: PurchaseInput): Decision {
       approved = false;
       declineReason = hard[0].evidence;
       declineCode = HARD_CODES[hard[0].id];
-    } else if (score >= SCORE_DECLINE) {
-      approved = false;
-      declineReason = `Risk score ${score} ≥ ${SCORE_DECLINE}: ${signals.filter((s) => s.points).map((s) => s.label.toLowerCase()).join(", ")}`;
-      declineCode = "risk_score";
     }
 
     const id = newId("auth");
@@ -445,8 +446,13 @@ export function decideAuthorization(input: PurchaseInput): Decision {
       decisionMs,
       input.source ?? "live",
     );
+    const key = merchantKey(input.merchantName,input.mcc,input.merchantCountry,input.merchantId);
+    const currency = (input.currency ?? "eur").toLowerCase();
+    db.prepare(`UPDATE authorization SET merchant_key=?,currency=? WHERE id=?`).run(key,currency,id);
 
     if (approved) {
+      const exceptions=signals.filter(s=>["H2","H5","H6","E1","R1","R5","R6","R8","R9","R13"].includes(s.id));
+      recordPaymentReview({ id,societyId:card.society_id,memberId:card.member_id,key,amount:input.amountCents,currency,at:input.at,exception:exceptions.length>0 || score>=SCORE_FLAG,reason:exceptions.map(s=>s.evidence).join("; ") });
       postEntry({
         societyId: card.society_id,
         eventId: event?.id ?? null,

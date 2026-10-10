@@ -1,4 +1,6 @@
 import Image from "next/image";
+import { ExtraCardButton } from "@/components/extra-card-button";
+import { cardCapacity, liveCardCount } from "@/lib/cards";
 import { Check, CircleCheck } from "lucide-react";
 import { SubscribeButton } from "@/components/subscribe-button";
 import { Notice, PageHeader, Panel, Pill, SectionTitle } from "@/components/ui";
@@ -94,10 +96,10 @@ export default async function PlanPage({ searchParams }: PageProps<"/plan">) {
 
         <div className="space-y-6">
           <Panel>
-            <SectionTitle>Why yearly?</SectionTitle>
+            <SectionTitle>Card slots</SectionTitle><p className="mb-3 text-sm">{liveCardCount(soc.id)} issued / {cardCapacity(soc.id)} available. Five included in €49/year; €10 per extra slot for the remaining plan year. Extra slots expire at renewal and do not renew automatically. Cancelled cards release a slot; frozen and pending cards count.</p>{active && actor.role === "treasurer" && <ExtraCardButton/>}<div className="mt-5"/><SectionTitle>Why yearly?</SectionTitle>
             <p className="text-sm leading-relaxed text-ink-2">
               Societies run on the academic year and elect a new committee every spring. A single yearly decision fits the treasurer
-              handover, costs less than one late reimbursement causes in stress, and sits comfortably inside a Societies Council grant.
+              handover, costs less than one late reimbursement causes in stress, and makes annual planning simpler. Grant eligibility for platform fees still needs confirmation.
             </p>
             <div className="mt-4 flex items-center gap-3 rounded-xl bg-paper-2 p-3 text-sm">
               <Image src="/art/persona-treasurer.webp" alt="" width={40} height={40} className="h-10 w-10 rounded-lg" />

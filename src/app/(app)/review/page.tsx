@@ -1,120 +1,36 @@
-import Image from "next/image";
 import Link from "next/link";
-import { Snowflake } from "lucide-react";
-import { AutoRefresh } from "@/components/auto-refresh";
-import { ReviewActions } from "@/components/review-actions";
-import { prettyMerchant } from "@/components/txn-list";
-import { AiLabel, EmptyState, PageHeader, Panel, Pill, SectionTitle, SeverityBadge, cx } from "@/components/ui";
 import { requireActor } from "@/lib/guard";
-import { mccInfo } from "@/lib/mcc";
-import { fmtDateTime, fmtEur, relativeTime } from "@/lib/money";
-import { listFlags, signalsOf } from "@/lib/queries";
+import { listMandates,listReviews } from "@/lib/workflows";
+import { fmtEur,fmtDate } from "@/lib/money";
+import { PageHeader,Panel,SectionTitle,Notice,Pill } from "@/components/ui";
+import { WorkflowForm } from "@/components/workflow-form";
+import { AutoRefresh } from "@/components/auto-refresh";
+import { listFlags } from "@/lib/queries";
 import { isOfficer, scopeOf } from "@/lib/access";
-
-export const metadata = { title: "Review queue" };
-
 export default async function ReviewPage() {
-  const actor = await requireActor();
-  const scope = scopeOf(actor);
-  const open = listFlags({ ...scope, status: "open" });
-  const resolved = listFlags({ ...scope, status: "resolved" }).slice(0, 8);
-  const officer = isOfficer(actor);
-  const manage = !officer;
-
-  return (
-    <>
-      <AutoRefresh active={open.some((f) => f.ra_status === "pending")} />
-      <PageHeader eyebrow={actor.kind === "member" ? actor.societyName : "All societies"} title={officer ? "Flags on my purchases" : "Review queue"}>
-        {officer
-          ? "Purchases on your card that the rules or JEV asked your treasurer to check. Your treasurer resolves them; have the receipt ready."
-          : "Sorted by severity, then age. Each flag shows the evidence behind it, so you can decide in seconds."}
-      </PageHeader>
-
-      {open.length === 0 ? (
-        <Panel className="mb-10">
-          <EmptyState title={officer ? "Nothing flagged on your card" : "Nothing needs your attention"}>
-            {officer ? "If a purchase on your card needs a second look, it shows up here." : <>JEV and the rules engine will flag anything that doesn&rsquo;t fit. You&rsquo;ll see it here first.</>}
-          </EmptyState>
-        </Panel>
-      ) : (
-        <div className="mb-10 space-y-4">
-          {open.map((f) => {
-            const chips = signalsOf(f).filter((s) => s.points > 0 || s.hard).slice(0, 5);
-            return (
-              <Panel key={f.f_id} className={cx("rise", f.f_severity === "high" && "ring-1 ring-bad/30")}>
-                <div className="flex flex-col gap-4 md:flex-row md:items-start">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <SeverityBadge severity={f.f_severity} />
-                      {f.f_status === "receipt_requested" && <Pill className="bg-info-bg text-info">Receipt requested</Pill>}
-                      {f.card_status === "inactive" && (
-                        <Pill className="bg-info-bg text-info">
-                          <Snowflake className="h-3.5 w-3.5" /> Card frozen
-                        </Pill>
-                      )}
-                      {f.decision === "declined" && <Pill className="bg-bad-bg text-bad">Declined</Pill>}
-                      <span className="text-xs text-ink-3">{relativeTime(f.f_created_at)}</span>
-                    </div>
-                    <Link href={`/transactions/${f.id}`} className="mt-2 block hover:underline">
-                      <span className="display text-2xl text-ink">{prettyMerchant(f.merchant_name)}</span>
-                      <span className="ml-2 text-lg tabular text-ink-2">{fmtEur(f.amount_cents)}</span>
-                    </Link>
-                    <p className="text-sm text-ink-3">
-                      {mccInfo(f.mcc).label} · {fmtDateTime(f.created_at)} · {f.member_name} · {f.event_name}
-                      {actor.kind === "admin" && <> · {f.society_name}</>}
-                    </p>
-                    <div className="mt-3 flex items-start gap-2.5 rounded-xl bg-paper-2/70 p-3">
-                      {f.ra_source === "jev" ? <Image src="/art/jev.webp" alt="" width={28} height={28} className="h-7 w-7 shrink-0 rounded-lg" /> : null}
-                      <div className="min-w-0">
-                        <p className="text-[15px] leading-relaxed text-ink">{f.ra_summary || f.f_reason}</p>
-                        <div className="mt-1.5">
-                          <AiLabel fallback={f.ra_source !== "jev"} />
-                        </div>
-                      </div>
-                    </div>
-                    {chips.length > 0 && (
-                      <div className="mt-3 flex flex-wrap gap-1.5">
-                        {chips.map((s) => (
-                          <span key={s.id} className="rounded-full border border-line bg-white px-2.5 py-1 text-xs text-ink-2" title={s.label}>
-                            {s.evidence}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  {manage && (
-                    <div className="md:w-[340px] md:shrink-0">
-                      <ReviewActions flagId={f.f_id} cardStatus={f.card_status} authStatus={f.status} status={f.f_status} />
-                    </div>
-                  )}
-                </div>
-              </Panel>
-            );
-          })}
-        </div>
-      )}
-
-      {resolved.length > 0 && (
-        <>
-          <SectionTitle>Recently resolved</SectionTitle>
-          <Panel pad={false}>
-            <ul className="divide-y divide-line">
-              {resolved.map((f) => (
-                <li key={f.f_id}>
-                  <Link href={`/transactions/${f.id}`} className="flex items-center gap-3 px-5 py-3 text-sm hover:bg-paper-2/50">
-                    <span className={cx("h-2 w-2 shrink-0 rounded-full", f.f_status === "fraud" ? "bg-bad" : "bg-ok")} />
-                    <span className="min-w-0 flex-1 truncate">
-                      <b className="font-medium">{prettyMerchant(f.merchant_name)}</b> <span className="text-ink-3">· {f.event_name}</span>
-                    </span>
-                    <span className="text-ink-2">{f.f_status === "fraud" ? "Misuse" : "Legitimate"}</span>
-                    <span className="w-20 text-right tabular">{fmtEur(f.amount_cents)}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </Panel>
-        </>
-      )}
-    </>
-  );
+  const a=await requireActor(),reviews=listReviews(a),manage=a.kind === "member" && a.role === "treasurer";
+  const open=reviews.filter(r=>["pending","receipt_requested"].includes(r.status));
+  const year=new Date().getUTCMonth()>=8 ? new Date().getUTCFullYear()+1 : new Date().getUTCFullYear();
+  // Officers only see risk investigations on their own card.
+  const incidents=listFlags({...scopeOf(a),status:"open"});
+  return <><AutoRefresh active ms={10000}/><PageHeader title={isOfficer(a) ? "My payment reviews" : "Payment reviews"} eyebrow={a.kind === "member" ? a.societyName : "Societies Council"}>Review after payment. First-time purchases and exceptions need a treasurer decision; matching recurring payments pass routine review automatically.</PageHeader>
+    <Notice title="A review is not a card-network decision">Approval records legitimate society spending. Marking misuse does not refund or reverse a payment. Record recovery follow-up, and freeze a card separately if needed.</Notice>
+    {incidents.length>0 && <Panel className="mt-4"><SectionTitle>Risk investigations</SectionTitle><p className="mb-2 text-sm">Separate from routine spending approval; includes blocked attempts and frozen cards.</p><ul className="space-y-2">{incidents.slice(0,8).map(f=><li key={f.id} className="text-sm"><Link className="underline" href={`/transactions/${f.id}`}>{f.merchant_name} · {fmtEur(f.amount_cents)} · {f.f_severity} risk</Link></li>)}</ul></Panel>}
+    <div className="mt-6"><SectionTitle aside={`${open.length} to review`}>Needs attention</SectionTitle></div>
+    {!open.length && <Panel><p>No payments need your review.</p></Panel>}
+    <div className="space-y-4">{open.map(r=><Panel key={r.authorization_id}>
+      <div className="flex flex-wrap justify-between gap-2"><Link href={`/transactions/${r.authorization_id}`} className="text-lg font-semibold underline decoration-line underline-offset-4">{r.merchant_name} · {fmtEur(r.amount_cents)}</Link><Pill className="bg-warn-bg text-warn">{r.status.replaceAll("_"," ")}</Pill></div>
+      <p className="mt-1 text-sm text-ink-3">{r.member_name} · {fmtDate(r.created_at)}{a.kind === "admin" ? ` · ${r.society_name}` : ""}</p><p className="my-3 text-sm">{r.reason}</p>
+      {manage && <WorkflowForm resource="reviews" id={r.authorization_id} fields={[
+        {name:"note",label:"Decision note / receipt request / recovery follow-up",type:"textarea"},
+        {name:"recurring",label:"Also approve future recurring payments (only with Approve spending)",type:"checkbox"},
+        {name:"min",label:"Recurring minimum (€)",type:"number",value:(Math.floor(r.amount_cents*0.9)/100).toFixed(2)},
+        {name:"max",label:"Recurring maximum (€)",type:"number",value:(Math.ceil(r.amount_cents*1.1)/100).toFixed(2)},
+        {name:"cadence",label:"Cadence",type:"select",value:"monthly",options:["weekly","monthly","yearly"].map(value=>({value,label:value}))},
+        {name:"endsOn",label:"Approval ends",type:"date",value:`${year}-08-31`,hint:"Scoped to this cardholder, merchant identity and EUR. Exceptions still return here."}
+      ]} actions={[{value:"approved",label:"Approve spending"},{value:"receipt_requested",label:"Request receipt"},{value:"misuse",label:"Mark misuse"}]}/>}
+    </Panel>)}</div>
+    {a.kind === "member" && ["treasurer","senior_treasurer"].includes(a.role) && <div className="mt-8"><SectionTitle>Recurring approvals</SectionTitle><div className="space-y-3">{listMandates(a.societyId).map(m=><Panel key={m.id}><h3 className="font-semibold">{m.merchant_name}</h3><p className="my-2 text-sm">{fmtEur(m.min_cents)}–{fmtEur(m.max_cents)} · {m.cadence} · until {fmtDate(m.ends_at)} · {m.status}</p>{manage && m.status === "active" && <WorkflowForm resource="mandates" id={m.id} actions={[{value:"revoke",label:"Revoke future approval"}]}/>}</Panel>)}</div></div>}
+    <div className="mt-8"><SectionTitle>Recent decisions</SectionTitle><Panel><ul className="divide-y divide-line">{reviews.filter(r=>!["pending","receipt_requested"].includes(r.status)).slice(0,30).map(r=><li key={r.authorization_id} className="py-3 text-sm"><Link href={`/transactions/${r.authorization_id}`}>{r.merchant_name} · {fmtEur(r.amount_cents)}</Link><span className="ml-2 text-ink-3">{r.status.replaceAll("_"," ")}</span>{r.note && <p>{r.note}</p>}</li>)}</ul></Panel></div>
+  </>;
 }

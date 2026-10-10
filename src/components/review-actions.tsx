@@ -8,7 +8,6 @@ import { button, cx, field, Notice } from "./ui";
 export function ReviewActions({
   flagId,
   cardStatus,
-  authStatus,
   status,
   compact,
 }: {
@@ -34,7 +33,7 @@ export function ReviewActions({
       const res = await fetch(`/api/flags/${flagId}/resolve`, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ resolution, note, unfreeze: resolution === "legit" && unfreeze, reverse: resolution === "fraud" }),
+        body: JSON.stringify({ resolution, note, unfreeze: resolution === "legit" && unfreeze }),
       });
       setBusy(null);
       if (!res.ok) return setError((await res.json()).error?.message ?? "Couldn't save that.");
@@ -75,7 +74,7 @@ export function ReviewActions({
           {spin("fraud") ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <OctagonX className="h-4 w-4" />} Misuse · cancel card
         </button>
       </div>
-      {authStatus === "pending" && <p className="text-xs text-ink-3">Marking misuse also releases the held amount back to the society.</p>}
+      <p className="text-xs text-ink-3">This records an incident and cancels future card use. It does not reverse or refund the payment.</p>
       {error && <Notice tone="bad">{error}</Notice>}
       {done && <Notice tone="ok">{done}</Notice>}
     </div>

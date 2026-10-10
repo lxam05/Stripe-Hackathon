@@ -210,8 +210,8 @@ export function NewEventForm({ cards, unallocatedCents, blockedLabels, defaults 
               <span>
                 {chosen.length === 0
                   ? "No card yet. You can switch one on later."
-                  : chosen.map((c) => `${c.holder_name.split(" ")[0]} (up to ${fmtEur(c.per_auth_cap_cents)} a purchase)`).join(", ")}
-                <span className="block text-xs text-ink-3">Each card keeps its own per-purchase and monthly limits</span>
+                  : chosen.map((c) => `${c.holder_name.split(" ")[0]} (review above ${fmtEur(c.per_auth_cap_cents)})`).join(", ")}
+                <span className="block text-xs text-ink-3">Each card keeps its own review thresholds. Event budgets and dates are advisory.</span>
               </span>
             </li>
             <li className="flex gap-3">

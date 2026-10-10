@@ -11,7 +11,7 @@ import { requireActor } from "@/lib/guard";
 import { EVENT_TYPES } from "@/lib/mcc";
 import { addDays, fmtDate, fmtEur } from "@/lib/money";
 import { getEvent, getSociety, listCards, listTransactions } from "@/lib/queries";
-import { canManageSociety, canSeeEvent } from "@/lib/access";
+import { canManageSociety, canSeeEvent, isFinance } from "@/lib/access";
 
 export async function generateMetadata({ params }: PageProps<"/events/[id]">) {
   const e = getEvent((await params).id);
@@ -27,7 +27,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   const soc = getSociety(e.society_id)!;
   const manage = canManageSociety(actor, e.society_id);
   // Officers see the event's budget, but only their own card and their own purchases on it.
-  const ownOnly = actor.kind === "member" && !manage ? actor.id : undefined;
+  const ownOnly = actor.kind === "member" && !isFinance(actor) ? actor.id : undefined;
   const txns = listTransactions({ eventId: e.id, memberId: ownOnly, limit: 100 });
   const pendingJev = txns.some((t) => t.ra_status === "pending");
   const typeLabel = EVENT_TYPES.find((t) => t.value === e.type)?.label ?? e.type;
@@ -86,13 +86,13 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             )}
             {editable && (
               <p className="mt-3 text-xs text-ink-3">
-                A card spends for one event at a time. Manage limits on <Link href="/cards" className="underline hover:text-ink">Officer cards</Link>.
+                A card spends for one event at a time. Manage review thresholds on <Link href="/cards" className="underline hover:text-ink">Officer cards</Link>.
               </p>
             )}
           </Panel>
           <Panel>
             <dl className="grid grid-cols-2 gap-y-3 text-sm">
-              <dt className="text-ink-3">Spending window</dt>
+              <dt className="text-ink-3">Suggested spending window</dt>
               <dd className="text-right tabular">
                 {fmtDate(addDays(e.start_date, -14))} → {fmtDate(addDays(e.end_date, 3))}
               </dd>

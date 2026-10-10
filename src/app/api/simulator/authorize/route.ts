@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
+import { getDb } from "@/lib/db";
 import { simulatePurchase } from "@/lib/simulator";
 import { apiError, handleError, readJson } from "@/lib/api";
 import { getActor } from "@/lib/session";
-import { canSeeOwned, cardOwner } from "@/lib/access";
 import { dublinToIso } from "@/lib/money";
 
 /** POST /api/simulator/authorize — demo-only: fire a sandbox authorisation. */
 export async function POST(req: Request) {
-  const actor = await getActor();
+  const actor=await getActor();
   if (!actor) return apiError(401, "unauthenticated", "Pick a demo user first.");
   try {
     const b = await readJson<{
@@ -20,8 +20,8 @@ export async function POST(req: Request) {
       local_time?: string;
       auto_capture?: boolean;
     }>(req);
-    // Officers can only use their own card; treasurers any card in their society.
-    if (!canSeeOwned(actor, cardOwner(String(b.card_id ?? "")))) return apiError(404, "unknown_card", "Pick one of your cards.");
+    const card=getDb().prepare(`SELECT society_id,member_id FROM card WHERE id=?`).get(b.card_id) as {society_id:string;member_id:string}|undefined;
+    if(!card || (actor.kind === "member" && (actor.societyId !== card.society_id || (actor.role !== "treasurer" && actor.id !== card.member_id)))) return apiError(403,"forbidden","Use your own card, or manage cards as this society’s treasurer.");
     let at: string | undefined;
     if (b.local_time) {
       const m = /^(\d{4}-\d{2}-\d{2})T(\d{2}:\d{2})$/.exec(b.local_time);

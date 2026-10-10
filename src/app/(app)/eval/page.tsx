@@ -1,7 +1,7 @@
-import { redirect } from "next/navigation";
 import fs from "node:fs";
 import path from "node:path";
 import Image from "next/image";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { CircleCheck, OctagonX } from "lucide-react";
 import { AutoRefresh } from "@/components/auto-refresh";
@@ -30,12 +30,10 @@ function readTests() {
 }
 
 export default async function EvalPage() {
-  const actor = await requireActor();
-  // Model-quality page for the Office and treasurers. Sample cases link to real purchases,
-  // so a treasurer only sees their own society's.
-  if (actor.kind === "member" && actor.role !== "treasurer") redirect("/dashboard");
+  const actor=await requireActor();
+  if(actor.kind !== "admin") redirect("/dashboard");
   const e = computeEval();
-  const samples = actor.kind === "admin" ? e.samples : e.samples.filter((s) => s.society_id === actor.societyId);
+  const samples = e.samples;
   const progress = evalProgress();
   const tests = readTests();
   const rows: (Metrics | null)[] = [e.rules, e.jev, e.combined];

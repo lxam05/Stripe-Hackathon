@@ -23,6 +23,8 @@ export const env = {
   openRouterKey: process.env.OPENROUTER_API_KEY?.trim() || "",
   openRouterBaseUrl: process.env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1",
   jevModel: process.env.JEV_MODEL?.trim() || "typesafe/jev-1.13",
+  /** Optional chat-capable OpenRouter model used only for editable annual-report prose. */
+  grantDraftModel: process.env.GRANT_DRAFT_MODEL?.trim() || "",
   jevTimeoutMs: Number(process.env.JEV_TIMEOUT_MS || 3000),
   dbPath: process.env.BALANCE_DB_PATH || "data/balance.db",
 };
@@ -36,7 +38,9 @@ export const SOCIETY_PLAN = {
   currency: "eur",
   interval: "year" as const,
   perks: [
-    "5 virtual officer cards, each with its own limits",
+    "5 committee cards; extra slots €10 each for the remaining plan year",
+    "Post-payment reviews, recurring approvals and member expenses",
+    "Annual spending report and Council grant review",
     "JEV risk analysis on every purchase",
     "Public sponsor top-up page + QR code",
     "Live ledger that reconciles itself",

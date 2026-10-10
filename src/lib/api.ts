@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { UserError } from "./errors";
+import { ZodError } from "zod";
 
 /** Consistent error envelope (PRD §13.4): { error: { code, message, details? } } */
 export function apiError(status: number, code: string, message: string, details?: unknown) {
@@ -7,6 +8,7 @@ export function apiError(status: number, code: string, message: string, details?
 }
 
 export function handleError(err: unknown) {
+  if (err instanceof ZodError) return apiError(400, "validation", err.issues.map(i=>`${i.path.join(".")}: ${i.message}`).join("; "));
   if (err instanceof UserError) return apiError(err.status, err.code, err.message);
   const msg = err instanceof Error ? err.message : String(err);
   console.error("[api]", err);
@@ -14,7 +16,7 @@ export function handleError(err: unknown) {
   if (err && typeof err === "object" && "type" in err && String((err as { type: string }).type).startsWith("Stripe")) {
     return apiError(502, "stripe_error", `Stripe said: ${msg}`);
   }
-  return apiError(500, "internal", "Something went wrong on our side. Nothing was charged; please try again.");
+  return apiError(500, "internal", "Something went wrong. Check the current status before retrying a financial action.");
 }
 
 export async function readJson<T>(req: Request): Promise<T> {

@@ -1,25 +1,30 @@
 import Link from "next/link";
+import { cardCapacity } from "@/lib/cards";
 import { CreditCard, Lock, Plus } from "lucide-react";
 import { CardControls, IssueCardForm, MonthBar, ReplaceCardButton } from "@/components/card-controls";
 import { CardStatusPill, Notice, PageHeader, Panel, SectionTitle, button } from "@/components/ui";
 import { VirtualCard, roleArt } from "@/components/virtual-card";
 import { requireMember } from "@/lib/guard";
+import { isFinance } from "@/lib/access";
 import { fmtDate, fmtEur } from "@/lib/money";
 import { getSociety, listCards, listEvents, listMembers } from "@/lib/queries";
-import { CARDS_PER_SOCIETY, ROLE_LABEL } from "@/lib/roles";
+import { ROLE_LABEL } from "@/lib/roles";
 
 export const metadata = { title: "Cards" };
 
 export default async function CardsPage() {
   const actor = await requireMember();
   const soc = getSociety(actor.societyId)!;
+  const CARDS_PER_SOCIETY = cardCapacity(soc.id);
   const isTreasurer = actor.role === "treasurer";
+  // Treasurer and senior treasurer see every card; anyone else only their own.
+  const seesAll = isFinance(actor);
   const planActive = soc.plan_status === "active";
   // Officers only ever see their own card; the other four belong to other people.
-  const all = listCards({ societyId: soc.id, memberId: isTreasurer ? undefined : actor.id, includeCanceled: true });
+  const all = listCards({ societyId: soc.id, memberId: seesAll ? undefined : actor.id, includeCanceled: true });
   const live = all.filter((c) => c.status !== "canceled");
   const members = listMembers(soc.id);
-  const withoutCard = members.filter((m) => !live.some((c) => c.member_id === m.id)).map((m) => ({ id: m.id, name: m.name, role: m.role }));
+  const withoutCard = members.filter((m) => !["member","senior_treasurer"].includes(m.role)).filter((m) => !live.some((c) => c.member_id === m.id)).map((m) => ({ id: m.id, name: m.name, role: m.role }));
   // Cancelled cards whose officer hasn't been given a new one yet.
   const replaceable = all.filter((c) => c.status === "canceled" && withoutCard.some((m) => m.id === c.member_id)).filter((c, i, xs) => xs.findIndex((x) => x.member_id === c.member_id) === i);
   const events = listEvents(soc.id, "open").map((e) => ({ id: e.id, name: e.name }));
@@ -30,26 +35,26 @@ export default async function CardsPage() {
     <>
       <PageHeader
         eyebrow={soc.name}
-        title={isTreasurer ? "Officer cards" : "My card"}
+        title={seesAll ? "Officer cards" : "My card"}
         actions={
           <Link href="/events" className={button("secondary")}>
-            {isTreasurer ? "Events" : "My events"}
+            {seesAll ? "Events" : "My events"}
           </Link>
         }
       >
-        {isTreasurer ? (
+        {seesAll ? (
           <>
-            Your Society Plan includes {CARDS_PER_SOCIETY} virtual cards, one per committee officer. Point a card at an event and its purchases come out of
-            that event&rsquo;s budget. Otherwise it spends from unallocated money. Every card has its own per-purchase and monthly limit.
+            Your society has {CARDS_PER_SOCIETY} card slots. Cards belong to committee members across events. Optional event tags organise spending. Purchase and
+            monthly thresholds trigger review after payment; they do not block spending.
           </>
         ) : (
-          <>Your society card. Your treasurer sets its limits and which event it spends for.</>
+          <>Your society card. Your treasurer sets its review thresholds and which event it&rsquo;s tagged to.</>
         )}
       </PageHeader>
 
       {!planActive && (
         <div className="mb-6">
-          {isTreasurer ? (
+          {seesAll ? (
             <Notice tone="warn" title={`Your Society Plan ended on ${fmtDate(soc.plan_renews_at ?? "2026-09-30")}`}>
               Every card is frozen until you renew.{" "}
               <Link href="/plan" className="font-medium underline">
@@ -65,8 +70,8 @@ export default async function CardsPage() {
         </div>
       )}
 
-      {isTreasurer && <SectionTitle aside={`${live.length} of ${CARDS_PER_SOCIETY} issued`}>Cards</SectionTitle>}
-      {!isTreasurer && live.length === 0 && (
+      {seesAll && <SectionTitle aside={`${live.length} of ${CARDS_PER_SOCIETY} issued`}>Cards</SectionTitle>}
+      {!seesAll && live.length === 0 && (
         <Panel className="mb-10">
           <p className="text-sm text-ink-2">You don&rsquo;t have a card yet. Ask your treasurer to issue one.</p>
         </Panel>
@@ -96,7 +101,7 @@ export default async function CardsPage() {
               {c.status === "pending" && c.error && <Notice tone="warn">{c.error}</Notice>}
               <div>
                 <MonthBar spent={c.month_spent} limit={c.monthly_limit_cents} />
-                <div className="mt-1 text-xs text-ink-3 tabular">Up to {fmtEur(c.per_auth_cap_cents)} per purchase</div>
+                <div className="mt-1 text-xs text-ink-3 tabular">Review above {fmtEur(c.per_auth_cap_cents)} per purchase</div>
               </div>
               {onEvent && (
                 <Link href={`/events/${c.event_id}`} className="-mt-1 text-sm text-ink-2 hover:text-ink">

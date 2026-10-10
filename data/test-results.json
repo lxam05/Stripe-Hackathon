@@ -1,7 +1,7 @@
 {
-  "ran_at": "2026-10-10T11:26:19.340Z",
-  "passed": 35,
-  "total": 35,
+  "ran_at": "2026-10-10T11:37:11.707Z",
+  "passed": 65,
+  "total": 65,
   "results": [
     {
       "id": "O2",
@@ -95,8 +95,8 @@
       "id": "G2",
       "kind": "Boundary",
       "name": "Unallocated money + €0.01 on an unassigned card",
-      "expected": "Declined (H3): open events' money is reserved",
-      "actual": "insufficient_budget",
+      "expected": "Approved: event budgets are advisory",
+      "actual": "null",
       "pass": true
     },
     {
@@ -111,16 +111,16 @@
       "id": "B3b",
       "kind": "Boundary",
       "name": "Cap + €0.01",
-      "expected": "Declined by card spending control",
-      "actual": "spending_controls",
+      "expected": "Approved with H5 review signal",
+      "actual": "null",
       "pass": true
     },
     {
       "id": "B9",
       "kind": "Boundary",
       "name": "Monthly card limit exactly reached, then + €0.01",
-      "expected": "Approved, then declined (H6)",
-      "actual": "approved, then spending_controls (H6)",
+      "expected": "Both approved; H6 triggers review",
+      "actual": "approved, then null (H6)",
       "pass": true
     },
     {
@@ -135,8 +135,8 @@
       "id": "B2",
       "kind": "Boundary",
       "name": "Remaining budget + €0.01",
-      "expected": "Declined (H3)",
-      "actual": "insufficient_budget",
+      "expected": "Approved with E1 review signal",
+      "actual": "null",
       "pass": true
     },
     {
@@ -151,8 +151,8 @@
       "id": "B6",
       "kind": "Boundary",
       "name": "End + 3 days 23:59 vs end + 4 days",
-      "expected": "Approved vs declined (H2)",
-      "actual": "approved vs outside_event_window",
+      "expected": "Both approved; H2 triggers review",
+      "actual": "approved vs null",
       "pass": true
     },
     {
@@ -276,11 +276,251 @@
       "pass": true
     },
     {
+      "id": "W1",
+      "kind": "Invariant",
+      "name": "Council onboarding requires a treasurer",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W2",
+      "kind": "Invariant",
+      "name": "Members cannot create societies or add other members",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W3",
+      "kind": "Invariant",
+      "name": "Reporting falls back to the treasurer",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W4",
+      "kind": "Invariant",
+      "name": "Five included card slots enforced",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W5",
+      "kind": "Invariant",
+      "name": "Cross-society card and event management denied",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W6",
+      "kind": "Invariant",
+      "name": "Paid extra card slot is idempotent",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W7",
+      "kind": "Invariant",
+      "name": "Extra-card entitlement expires; no sixth usable slot",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W8",
+      "kind": "Invariant",
+      "name": "Frozen cards count; cancelled cards release slots",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W9",
+      "kind": "Invariant",
+      "name": "Ordinary members cannot be issued committee cards",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W10",
+      "kind": "Invariant",
+      "name": "First-time payment succeeds and queues immediate review",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W11",
+      "kind": "Invariant",
+      "name": "Only owning treasurer reviews payment",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W12",
+      "kind": "Invariant",
+      "name": "Merchant + range + cadence match skips routine review",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W13",
+      "kind": "Invariant",
+      "name": "Duplicate in same cadence returns to review",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W14",
+      "kind": "Invariant",
+      "name": "Amount outside mandate returns to review",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W15",
+      "kind": "Invariant",
+      "name": "Different currency cannot match mandate",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W16",
+      "kind": "Invariant",
+      "name": "Different merchant cannot match mandate",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W17",
+      "kind": "Invariant",
+      "name": "Different cardholder cannot match mandate",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W18",
+      "kind": "Invariant",
+      "name": "Over-threshold payment succeeds and is immediately visible",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W19",
+      "kind": "Invariant",
+      "name": "Misuse review does not reverse settled funds",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W20",
+      "kind": "Invariant",
+      "name": "Insufficient funds and blocked MCC still decline",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W21",
+      "kind": "Invariant",
+      "name": "Revoked mandates never bypass review",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W22",
+      "kind": "Invariant",
+      "name": "Expense approval reserves no fake payment",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W23",
+      "kind": "Invariant",
+      "name": "Expense and receipt ownership enforced",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W24",
+      "kind": "Invariant",
+      "name": "External repayment debits ledger exactly once",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W25",
+      "kind": "Invariant",
+      "name": "Receipt type validation rejects HTML",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W26",
+      "kind": "Invariant",
+      "name": "Report fallback uses ledger evidence including repayments",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W27",
+      "kind": "Invariant",
+      "name": "Senior treasurer takes reporting ownership when assigned",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W28",
+      "kind": "Invariant",
+      "name": "Submission locks draft and only Council can approve",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W29",
+      "kind": "Invariant",
+      "name": "Council returns report, owner revises and resubmits",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
+      "id": "W30",
+      "kind": "Invariant",
+      "name": "Grant approval records amount without crediting funds",
+      "expected": "Pass",
+      "actual": "Pass",
+      "pass": true
+    },
+    {
       "id": "L1",
       "kind": "Invariant",
       "name": "Ledger reconciles for all societies",
       "expected": "available ≥ 0 and held = Σ pending holds",
-      "actual": "Drama Society ok, Robotics Society ok, Law Society ok, Hillwalking Club ok, E-Sports Society ok",
+      "actual": "Drama Society ok, Robotics Society ok, Law Society ok, Hillwalking Club ok, E-Sports Society ok, Workflow Test ok",
       "pass": true
     }
   ]

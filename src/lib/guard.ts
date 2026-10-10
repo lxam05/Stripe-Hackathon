@@ -16,6 +16,13 @@ export async function requireTreasurer(): Promise<MemberActor> {
   return a;
 }
 
+/** Society-wide oversight pages: treasurer or senior treasurer. */
+export async function requireFinance(): Promise<MemberActor> {
+  const a = await requireMember();
+  if (a.role !== "treasurer" && a.role !== "senior_treasurer") redirect("/dashboard");
+  return a;
+}
+
 export async function requireAdmin(): Promise<AdminActor> {
   const a = await getActor();
   if (!a) redirect("/");

@@ -6,7 +6,7 @@ import { getDb, newId, nowIso } from "@/lib/db";
 import { env } from "@/lib/env";
 import { suspendPlanCards } from "@/lib/cards";
 import { mccInfo } from "@/lib/mcc";
-import { activatePlan, activatePlanFromSession, fulfilTopUp } from "@/lib/payments";
+import { activatePlan, activatePlanFromSession, fulfilTopUp, fulfilCardSlot } from "@/lib/payments";
 import { postEntry } from "@/lib/ledger";
 import { getStripe } from "@/lib/stripe";
 import { apiError } from "@/lib/api";
@@ -43,6 +43,7 @@ export async function POST(req: Request) {
           merchantCountry: auth.merchant_data.country ?? "IE",
           at: new Date(auth.created * 1000).toISOString(),
           stripeAuthId: auth.id,
+          currency: auth.currency,
         })
       : null;
     if (d?.authorizationId) enqueueAssessment(d.authorizationId);
@@ -63,12 +64,28 @@ export async function POST(req: Request) {
       case "checkout.session.completed": {
         const s = event.data.object as Stripe.Checkout.Session;
         if (s.metadata?.kind === "topup" && s.payment_status === "paid") fulfilTopUp(s.id, "webhook");
-        if (s.metadata?.kind === "plan") await activatePlanFromSession(s.id, "webhook");
+        if (s.metadata?.kind === "plan" && s.payment_status === "paid") await activatePlanFromSession(s.id, "webhook");
+        if (s.metadata?.kind === "card_slot" && s.payment_status === "paid") fulfilCardSlot(s.id,"webhook");
         break;
       }
       case "checkout.session.async_payment_succeeded": {
         const s = event.data.object as Stripe.Checkout.Session;
-        if (s.metadata?.kind === "topup") fulfilTopUp(s.id, "webhook");
+        if (s.metadata?.kind === "topup" && s.payment_status === "paid") fulfilTopUp(s.id, "webhook");
+        if (s.metadata?.kind === "card_slot" && s.payment_status === "paid") fulfilCardSlot(s.id,"webhook");
+        if (s.metadata?.kind === "plan" && s.payment_status === "paid") await activatePlanFromSession(s.id,"webhook");
+        break;
+      }
+      case "checkout.session.async_payment_failed": {
+        const s=event.data.object as Stripe.Checkout.Session;
+        db.prepare(`UPDATE card_slot_purchase SET status='failed' WHERE checkout_session_id=? AND status!='paid'`).run(s.id);
+        break;
+      }
+      case "invoice.payment_failed": {
+        const inv=event.data.object as Stripe.Invoice;
+        const sub=inv.parent?.subscription_details?.subscription;
+        const subId=typeof sub === "string" ? sub : sub?.id;
+        const soc=db.prepare(`SELECT id FROM society WHERE stripe_subscription_id=?`).get(subId ?? "") as {id:string} | undefined;
+        if(soc){db.prepare(`UPDATE society SET plan_status='expired' WHERE id=?`).run(soc.id);await suspendPlanCards(soc.id,"webhook");}
         break;
       }
       case "invoice.paid": {

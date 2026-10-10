@@ -376,7 +376,7 @@ export function simulatorCards(scope: { societyId?: string; memberId?: string })
     const soc = db.prepare(`SELECT name, slug FROM society WHERE id=?`).get(c.society_id) as { name: string; slug: string };
     const onEvent = c.event_id && c.event_status === "open";
     const ev = onEvent ? (db.prepare(`SELECT budget_cents FROM event WHERE id=?`).get(c.event_id) as { budget_cents: number }) : null;
-    const remaining = ev ? eventRemaining(c.event_id!, ev.budget_cents).remaining : societyBalances(c.society_id).available - committedToOpenEvents(c.society_id);
+    const remaining = ev ? eventRemaining(c.event_id!, ev.budget_cents).remaining : societyBalances(c.society_id).available;
     return { ...c, society_name: soc.name, society_slug: soc.slug, remaining };
   });
 }

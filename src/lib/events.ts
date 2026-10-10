@@ -4,7 +4,6 @@ import { committedToOpenEvents, eventRemaining, societyBalances } from "./ledger
 import { EVENT_TYPES, type EventType } from "./mcc";
 import { fmtEur } from "./money";
 import { UserError } from "./errors";
-import { releaseAuthorization } from "./authorize";
 
 export interface NewEventInput {
   societyId: string;
@@ -98,7 +97,7 @@ export async function resolveFlag(flagId: string, resolution: Resolution, note: 
   const card = db.prepare(`SELECT status FROM card WHERE id=?`).get(f.card_id) as { status: string };
   if (resolution === "fraud") {
     if (card.status !== "canceled") await setCardStatus(f.card_id, "canceled", "Cancelled by treasurer: misuse confirmed", actor);
-    if (opts.reverse && f.auth_status === "pending") releaseAuthorization(f.auth_id, undefined, "reversed");
+    // A treasurer review cannot undo a network payment. Recovery is tracked separately.
   }
   if (resolution === "legit" && opts.unfreeze && card.status === "inactive") {
     await setCardStatus(f.card_id, "active", "Unfrozen by treasurer after review", actor);

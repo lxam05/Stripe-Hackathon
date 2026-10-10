@@ -66,7 +66,7 @@ export function Simulator({
   const [country, setCountry] = useState("IE");
   const [useTime, setUseTime] = useState(false);
   const [time, setTime] = useState(`${today}T12:00`);
-  const [capture, setCapture] = useState(false);
+  const [capture, setCapture] = useState(true);
   const [active, setActive] = useState(presets[0].label);
   const [error, setError] = useState<string | null>(null);
   const [results, setResults] = useState<Result[]>([]);
@@ -133,9 +133,9 @@ export function Simulator({
                 Spending for <b className="font-medium text-ink-2">{card.eventName}</b> ({card.eventType}) · {fmtEur(card.remaining)} left on its budget
               </>
             ) : (
-              <>General spending · {fmtEur(Math.max(0, card.remaining))} unallocated</>
+              <>General spending · {fmtEur(Math.max(0, card.remaining))} available</>
             )}{" "}
-            · cap {fmtEur(card.cap)} a purchase · {fmtEur(Math.max(0, card.monthLeft))} left this month
+            · review above {fmtEur(card.cap)} a purchase · {fmtEur(Math.max(0, card.monthLeft))} to monthly review threshold
           </p>
         </div>
 

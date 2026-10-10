@@ -15,8 +15,8 @@ export const metadata = { title: "Purchase simulator" };
 export default async function SimulatorPage({ searchParams }: PageProps<"/simulator">) {
   const actor = await requireActor();
   const sp = await searchParams;
-  // Officers can only fire purchases on their own card.
-  const cards = simulatorCards(scopeOf(actor)).map((c) => {
+  // Members can only fire purchases on their own card; the treasurer on any of the society's.
+  const cards = simulatorCards(actor.kind === "admin" || actor.role === "treasurer" ? scopeOf(actor) : { societyId: actor.societyId, memberId: actor.id }).map((c) => {
     const onEvent = Boolean(c.event_id && c.event_status === "open");
     return {
       id: c.id,

@@ -89,7 +89,7 @@ export async function assessAuthorization(authId: string, opts: { skipJev?: bool
   if (a.amount_cents < TINY_AMOUNT_CENTS && a.decision === "approved") {
     insertAssessment(authId, {
       source: "rules_fallback",
-      summary: "Card verification (under €1). No review needed.",
+      summary: "Card verification (under €1). No additional risk analysis needed; ordinary payment review still applies.",
       risk_level: "low",
       risk_score: 0,
       fallback_reason: "tiny_amount",
@@ -165,6 +165,7 @@ function insertAssessment(authId: string, f: Record<string, unknown>) {
 async function applyOutcome(a: AuthRow, outcome: PolicyOutcome, reason: string, actor: string) {
   if (!outcome.flag) return;
   const db = getDb();
+  db.prepare(`UPDATE payment_review SET status='pending',reason=reason || '; risk assessment requires review' WHERE authorization_id=? AND status='recurring_approved'`).run(a.id);
   const existing = db.prepare(`SELECT * FROM flag WHERE authorization_id=?`).get(a.id) as
     | { id: string; severity: Sev; status: string }
     | undefined;
