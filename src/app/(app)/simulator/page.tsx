@@ -5,6 +5,7 @@ import { env, stripeEnabled } from "@/lib/env";
 import { requireActor } from "@/lib/guard";
 import { MCC_TABLE } from "@/lib/mcc";
 import { simulatorCards } from "@/lib/queries";
+import { isOfficer, scopeOf } from "@/lib/access";
 import { ROLE_LABEL } from "@/lib/roles";
 import { MERCHANT_PRESETS } from "@/lib/simulator";
 import { dublinParts } from "@/lib/money";
@@ -14,7 +15,8 @@ export const metadata = { title: "Purchase simulator" };
 export default async function SimulatorPage({ searchParams }: PageProps<"/simulator">) {
   const actor = await requireActor();
   const sp = await searchParams;
-  const cards = simulatorCards(actor.kind === "member" ? actor.societyId : undefined).map((c) => {
+  // Members can only fire purchases on their own card; the treasurer on any of the society's.
+  const cards = simulatorCards(actor.kind === "admin" || actor.role === "treasurer" ? scopeOf(actor) : { societyId: actor.societyId, memberId: actor.id }).map((c) => {
     const onEvent = Boolean(c.event_id && c.event_status === "open");
     return {
       id: c.id,
@@ -41,8 +43,10 @@ export default async function SimulatorPage({ searchParams }: PageProps<"/simula
       </PageHeader>
       {cards.length === 0 ? (
         <Panel>
-          <EmptyState title="No active cards" image="/art/persona-officer.webp" action={actor.kind === "member" && <Link href="/cards" className={button("primary")}>Officer cards</Link>}>
-            Issue an officer card (or renew the Society Plan to unfreeze yours), then come back to make purchases with it.
+          <EmptyState title="No active cards" image="/art/persona-officer.webp" action={actor.kind === "member" && <Link href="/cards" className={button("primary")}>{isOfficer(actor) ? "My card" : "Officer cards"}</Link>}>
+            {isOfficer(actor)
+              ? "You don't have a card yet. Ask your treasurer to issue one."
+              : "Issue an officer card (or renew the Society Plan to unfreeze yours), then come back to make purchases with it."}
           </EmptyState>
         </Panel>
       ) : (

@@ -6,12 +6,14 @@ import { PageHeader,Panel,SectionTitle,Notice,Pill } from "@/components/ui";
 import { WorkflowForm } from "@/components/workflow-form";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { listFlags } from "@/lib/queries";
+import { isOfficer, scopeOf } from "@/lib/access";
 export default async function ReviewPage() {
   const a=await requireActor(),reviews=listReviews(a),manage=a.kind === "member" && a.role === "treasurer";
   const open=reviews.filter(r=>["pending","receipt_requested"].includes(r.status));
   const year=new Date().getUTCMonth()>=8 ? new Date().getUTCFullYear()+1 : new Date().getUTCFullYear();
-  const incidents=listFlags({societyId:a.kind === "member" ? a.societyId : undefined,status:"open"});
-  return <><AutoRefresh active ms={10000}/><PageHeader title="Payment reviews" eyebrow={a.kind === "member" ? a.societyName : "Societies Council"}>Review after payment. First-time purchases and exceptions need a treasurer decision; matching recurring payments pass routine review automatically.</PageHeader>
+  // Officers only see risk investigations on their own card.
+  const incidents=listFlags({...scopeOf(a),status:"open"});
+  return <><AutoRefresh active ms={10000}/><PageHeader title={isOfficer(a) ? "My payment reviews" : "Payment reviews"} eyebrow={a.kind === "member" ? a.societyName : "Societies Council"}>Review after payment. First-time purchases and exceptions need a treasurer decision; matching recurring payments pass routine review automatically.</PageHeader>
     <Notice title="A review is not a card-network decision">Approval records legitimate society spending. Marking misuse does not refund or reverse a payment. Record recovery follow-up, and freeze a card separately if needed.</Notice>
     {incidents.length>0 && <Panel className="mt-4"><SectionTitle>Risk investigations</SectionTitle><p className="mb-2 text-sm">Separate from routine spending approval; includes blocked attempts and frozen cards.</p><ul className="space-y-2">{incidents.slice(0,8).map(f=><li key={f.id} className="text-sm"><Link className="underline" href={`/transactions/${f.id}`}>{f.merchant_name} · {fmtEur(f.amount_cents)} · {f.f_severity} risk</Link></li>)}</ul></Panel>}
     <div className="mt-6"><SectionTitle aside={`${open.length} to review`}>Needs attention</SectionTitle></div>

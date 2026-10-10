@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import { assignCard, issueCard, setCardStatus, updateCardLimits } from "@/lib/cards";
-import { getDb } from "@/lib/db";
 import { apiError, handleError, readJson } from "@/lib/api";
-import { actorLabel, canManage, getActor } from "@/lib/session";
+import { actorLabel, getActor } from "@/lib/session";
+import { canManageSociety, cardOwner } from "@/lib/access";
 
 interface Body {
   action: string;
@@ -20,11 +20,11 @@ interface Body {
  */
 export async function PATCH(req: Request, ctx: RouteContext<"/api/cards/[id]">) {
   const actor = await getActor();
-  if (!canManage(actor)) return apiError(403, "forbidden", "Only the treasurer can change cards.");
   try {
     const { id } = await ctx.params;
-    const card = getDb().prepare(`SELECT society_id FROM card WHERE id=?`).get(id) as { society_id: string } | undefined;
-    if (!card || (actor!.kind === "member" && actor!.societyId !== card.society_id)) return apiError(404, "not_found", "Card not found");
+    const owner = cardOwner(id);
+    if (!owner) return apiError(404, "not_found", "Card not found");
+    if (!canManageSociety(actor, owner.society_id)) return apiError(403, "forbidden", "Only the treasurer can change cards.");
     const b = await readJson<Body>(req);
     const who = actorLabel(actor!);
     if (b.action === "freeze") await setCardStatus(id, "inactive", b.reason || "Frozen by treasurer", who);

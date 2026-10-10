@@ -44,7 +44,7 @@ export async function POST(req: Request) {
 /** GET /api/events?budget_cents= — live over-budget warning for the form. */
 export async function GET(req: Request) {
   const actor = await getActor();
-  if (actor?.kind !== "member") return apiError(403, "forbidden", "Sign in as a society member.");
+  if (actor?.kind !== "member" || actor.role !== "treasurer") return apiError(403, "forbidden", "Only the treasurer can see the society's money.");
   const cents = Number(new URL(req.url).searchParams.get("budget_cents") ?? 0);
   return NextResponse.json({ warning: budgetWarning(actor.societyId, cents) });
 }

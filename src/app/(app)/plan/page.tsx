@@ -5,7 +5,7 @@ import { Check, CircleCheck } from "lucide-react";
 import { SubscribeButton } from "@/components/subscribe-button";
 import { Notice, PageHeader, Panel, Pill, SectionTitle } from "@/components/ui";
 import { SOCIETY_PLAN, stripeEnabled } from "@/lib/env";
-import { requireMember } from "@/lib/guard";
+import { requireTreasurer } from "@/lib/guard";
 import { fmtDate, fmtEur } from "@/lib/money";
 import { confirmCheckoutSession } from "@/lib/payments";
 import { getSociety } from "@/lib/queries";
@@ -14,7 +14,7 @@ import { getDb } from "@/lib/db";
 export const metadata = { title: "Plan" };
 
 export default async function PlanPage({ searchParams }: PageProps<"/plan">) {
-  const actor = await requireMember();
+  const actor = await requireTreasurer();
   const sp = await searchParams;
   // Returning from Stripe Checkout: confirm server-side (works even before the webhook lands).
   if (typeof sp.session_id === "string") {

@@ -1,6 +1,5 @@
 import Image from "next/image";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { WorkflowForm } from "@/components/workflow-form";
 import { listMembers } from "@/lib/queries";
 import { CircleCheck, OctagonX } from "lucide-react";
@@ -8,7 +7,7 @@ import { PolicyEditor } from "@/components/policy-editor";
 import { ResetDemo } from "@/components/reset-demo";
 import { PageHeader, Panel, Pill, SectionTitle, StatTile } from "@/components/ui";
 import { getDb } from "@/lib/db";
-import { requireActor } from "@/lib/guard";
+import { requireAdmin } from "@/lib/guard";
 import { reconcileAll } from "@/lib/ledger";
 import { MCC_TABLE } from "@/lib/mcc";
 import { fmtDate, fmtEur, relativeTime } from "@/lib/money";
@@ -18,8 +17,7 @@ import { listAudit, listSocieties, societyOverview } from "@/lib/queries";
 export const metadata = { title: "Societies Office" };
 
 export default async function AdminPage() {
-  const actor = await requireActor();
-  if (actor.kind !== "admin") redirect("/dashboard");
+  await requireAdmin();
   const socs = listSocieties();
   const rec = new Map(reconcileAll().map((r) => [r.id, r]));
   const flagCounts = getDb()
@@ -124,7 +122,7 @@ export default async function AdminPage() {
           <PolicyEditor
             policies={policies}
             mccs={MCC_TABLE.map((m) => ({ code: m.code, label: m.label, defaultPolicy: m.defaultPolicy }))}
-            editable={actor.kind === "admin"}
+            editable
           />
         </div>
         <div className="min-w-0 space-y-6">

@@ -32,6 +32,23 @@ npm run build
 
 Tests use a separate disposable database and a local OpenRouter stub; they never reset your app database. A few existing failure-path tests call external APIs with deliberately invalid test credentials. The sandbox must allow local sockets for the stub. `npm run seed` explicitly resets the app demo data; normal startup uses additive migrations and preserves existing records.
 
+## Who sees what
+
+| | Societies Council | Treasurer | Senior treasurer | Other members & officers |
+|---|---|---|---|---|
+| Societies | All (oversight) | Their own | Their own | Their own |
+| Committee cards | All | All, and manages them | All (read-only) | Only their own card |
+| Card payments, reviews, risk investigations | All | Whole society; decides reviews | Whole society (read-only) | Only payments on their own card |
+| Expenses | All | All claims; approves and records repayment | All claims | Only their own claims and receipts |
+| Events | All | All; creates, tags cards, closes | All | Events their card is on or they bought for; only their own purchases on them |
+| Funding & ledger | Overview | Yes | Yes | No |
+| Plan & billing | No | Yes | No | No |
+| Grant report | Reviews submitted reports | Yes (owns it if no senior) | Prepares and submits | No |
+| Members directory | Leadership changes | Adds members | Yes | Yes |
+| Simulator / Evaluation | All cards / yes | Society's cards / no | Own card / no | Own card / no |
+
+Rules live in `src/lib/access.ts` and are enforced on every page and API route, not only hidden in the UI. Asking for someone else's payment, card or event returns a 404.
+
 ## Main demo
 
 - Choose the Drama treasurer to view payment reviews, card controls and outstanding claims.

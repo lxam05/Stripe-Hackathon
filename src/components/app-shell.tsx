@@ -2,6 +2,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { env, jevEnabled, stripeEnabled } from "@/lib/env";
+import { isFinance } from "@/lib/access";
 import { listReviews } from "@/lib/workflows";
 import { ROLE_LABEL } from "@/lib/roles";
 import type { Actor } from "@/lib/session";
@@ -11,26 +12,38 @@ import { SwitchUser } from "./switch-user";
 
 export function AppShell({ actor, children }: { actor: Actor; children: ReactNode }) {
   const flags = listReviews(actor).filter(r => ["pending","receipt_requested"].includes(r.status)).length;
+  const treasurer = actor.kind === "member" && actor.role === "treasurer";
+  // Officers only get their own card, spending and reviews; money, members' spending and reporting are the finance roles'.
   const main: NavItem[] =
-    actor.kind === "member"
+    actor.kind === "admin"
       ? [
-          { href: "/dashboard", label: "Overview", icon: "dashboard" },
-          { href: "/cards", label: "Officer cards", icon: "cards" },
-          { href: "/expenses", label: "Expenses", icon: "transactions" },
-          { href: "/reports", label: "Grant report", icon: "admin" },
-          { href: "/members", label: "Members", icon: "admin" },
-          { href: "/events", label: "Events · cost centres", icon: "events" },
-          { href: "/review", label: "Payment reviews", icon: "review", badge: flags },
-          { href: "/transactions", label: "Transactions", icon: "transactions" },
-          { href: "/funding", label: "Funding", icon: "funding" },
-          { href: "/plan", label: "Plan", icon: "plan" },
-        ]
-      : [
           { href: "/admin", label: "Societies Council", icon: "admin" },
           { href: "/reports", label: "Grant reviews", icon: "admin" },
           { href: "/review", label: "Payment reviews", icon: "review", badge: flags },
           { href: "/transactions", label: "Transactions", icon: "transactions" },
-        ];
+        ]
+      : isFinance(actor)
+        ? [
+            { href: "/dashboard", label: "Overview", icon: "dashboard" },
+            { href: "/cards", label: "Officer cards", icon: "cards" },
+            { href: "/expenses", label: "Expenses", icon: "transactions" },
+            { href: "/reports", label: "Grant report", icon: "admin" },
+            { href: "/members", label: "Members", icon: "admin" },
+            { href: "/events", label: "Events · cost centres", icon: "events" },
+            { href: "/review", label: "Payment reviews", icon: "review", badge: flags },
+            { href: "/transactions", label: "Transactions", icon: "transactions" },
+            { href: "/funding", label: "Funding", icon: "funding" },
+            ...(treasurer ? [{ href: "/plan", label: "Plan", icon: "plan" } as NavItem] : []),
+          ]
+        : [
+            { href: "/dashboard", label: "Overview", icon: "dashboard" },
+            { href: "/cards", label: "My card", icon: "cards" },
+            { href: "/expenses", label: "My expenses", icon: "transactions" },
+            { href: "/events", label: "My events", icon: "events" },
+            { href: "/review", label: "My payment reviews", icon: "review", badge: flags },
+            { href: "/transactions", label: "My purchases", icon: "transactions" },
+            { href: "/members", label: "Members", icon: "admin" },
+          ];
   const demo: NavItem[] = [
     { href: "/simulator", label: "Purchase simulator", icon: "simulator" },
     ...(actor.kind === "admin" ? [{ href: "/eval", label: "Evaluation", icon: "eval" } as NavItem] : []),

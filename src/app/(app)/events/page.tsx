@@ -4,6 +4,7 @@ import { BudgetBar } from "@/components/budget-bar";
 import { EmptyState, PageHeader, Panel, SectionTitle, button } from "@/components/ui";
 import { CardHolders, EventCover } from "@/components/virtual-card";
 import { requireMember } from "@/lib/guard";
+import { isFinance } from "@/lib/access";
 import { EVENT_TYPES } from "@/lib/mcc";
 import { fmtDate, fmtEur } from "@/lib/money";
 import { getSociety, listEvents } from "@/lib/queries";
@@ -13,15 +14,18 @@ export const metadata = { title: "Events" };
 export default async function EventsPage() {
   const actor = await requireMember();
   const soc = getSociety(actor.societyId)!;
-  const open = listEvents(soc.id, "open");
-  const closed = listEvents(soc.id, "closed");
+  const isTreasurer = actor.role === "treasurer";
+  // Officers see the events their card spends for or that they've bought for, nothing else.
+  const memberId = isFinance(actor) ? undefined : actor.id;
+  const open = listEvents(soc.id, "open", memberId);
+  const closed = listEvents(soc.id, "closed", memberId);
   const typeLabel = (t: string) => EVENT_TYPES.find((x) => x.value === t)?.label ?? t;
 
   return (
     <>
       <PageHeader
         eyebrow={soc.name}
-        title="Events"
+        title={memberId ? "My events" : "Events"}
         actions={
           actor.role === "treasurer" && (
             <Link href="/events/new" className={button("primary")}>
@@ -30,14 +34,16 @@ export default async function EventsPage() {
           )
         }
       >
-        Each event is a budget. Point officer cards at it and their purchases come out of it, only within the event&rsquo;s dates.
+        {!memberId
+          ? "Each event is a budget. Point officer cards at it and their purchases come out of it, only within the event’s dates."
+          : "Events your card spends for, and past events you bought for. Your treasurer chooses which event your card is on."}
       </PageHeader>
 
       <SectionTitle aside={`${open.length} open`}>Open</SectionTitle>
       {open.length === 0 ? (
         <Panel className="mb-10">
           <EmptyState title="No open events" image="/art/persona-officer.webp" action={actor.role === "treasurer" && <Link href="/events/new" className={button("primary")}><Plus className="h-4 w-4" /> New event</Link>}>
-            Create an event budget, then choose which officer cards spend for it.
+            {isTreasurer ? "Create an event budget, then choose which officer cards spend for it." : "Your card isn’t on an event right now."}
           </EmptyState>
         </Panel>
       ) : (

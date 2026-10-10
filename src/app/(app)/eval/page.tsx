@@ -33,6 +33,7 @@ export default async function EvalPage() {
   const actor=await requireActor();
   if(actor.kind !== "admin") redirect("/dashboard");
   const e = computeEval();
+  const samples = e.samples;
   const progress = evalProgress();
   const tests = readTests();
   const rows: (Metrics | null)[] = [e.rules, e.jev, e.combined];
@@ -177,13 +178,13 @@ export default async function EvalPage() {
         </div>
       </div>
 
-      {e.samples.length > 0 && (
+      {samples.length > 0 && (
         <>
           <div className="mt-8">
             <SectionTitle>Sample explanations</SectionTitle>
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            {e.samples.map((s) => (
+            {samples.map((s) => (
               <Link key={s.id} href={`/transactions/${s.id}`} className="rounded-2xl border border-line bg-surface p-4 hover:shadow-[var(--shadow-card)]">
                 <div className="flex items-center justify-between gap-2 text-sm">
                   <span className="truncate font-medium">{s.merchant}</span>

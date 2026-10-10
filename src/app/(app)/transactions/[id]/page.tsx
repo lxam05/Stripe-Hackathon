@@ -13,7 +13,7 @@ import { requireActor } from "@/lib/guard";
 import { mccInfo } from "@/lib/mcc";
 import { fmtDate, fmtDateTime, fmtEur } from "@/lib/money";
 import { comparablePurchases, getTransaction, latestAssessment, signalsOf } from "@/lib/queries";
-import { canManage } from "@/lib/session";
+import { canManageSociety, canSeeOwned, isOfficer } from "@/lib/access";
 import { getDb } from "@/lib/db";
 
 const ACTION_TEXT: Record<string, string> = {
@@ -32,10 +32,12 @@ export default async function TransactionPage({ params }: PageProps<"/transactio
   const actor = await requireActor();
   const { id } = await params;
   const t = getTransaction(id);
-  if (!t || (actor.kind === "member" && actor.societyId !== t.society_id)) notFound();
+  if (!t || !canSeeOwned(actor, t)) notFound();
+  const manage = canManageSociety(actor, t.society_id);
   const ra = latestAssessment(t.id);
   const signals = signalsOf(t);
-  const comps = comparablePurchases(t);
+  // Officers compare against their own history only, never other officers' spending.
+  const comps = comparablePurchases(t, isOfficer(actor) ? t.member_id : undefined);
   const info = mccInfo(t.mcc);
   const flag = getDb().prepare(`SELECT * FROM flag WHERE authorization_id=?`).get(t.id) as
     | { id: string; severity: "low" | "medium" | "high"; status: string; card_frozen: number; resolution_note: string | null; resolved_at: string | null; resolved_by: string | null }
@@ -230,7 +232,7 @@ export default async function TransactionPage({ params }: PageProps<"/transactio
                     {ra!.cost_usd != null && ` · $${ra!.cost_usd.toFixed(5)}`} · temperature 0 · pseudonymised input
                   </p>
                 )}
-                {jevEnabled() && (
+                {jevEnabled() && manage && (
                   <div className="mt-4">
                     <RerunJev authId={t.id} label={ra!.source === "jev" ? "Re-run JEV" : "Run JEV analysis"} />
                   </div>
@@ -250,7 +252,7 @@ export default async function TransactionPage({ params }: PageProps<"/transactio
                 </div>
               ) : null}
               {["open", "receipt_requested"].includes(flag.status) ? (
-                canManage(actor) ? (
+                manage ? (
                   <ReviewActions flagId={flag.id} cardStatus={card.status} authStatus={t.status} status={flag.status} />
                 ) : (
                   <p className="text-sm text-ink-2">Your treasurer has been notified and will review this purchase.</p>

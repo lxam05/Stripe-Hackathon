@@ -1,12 +1,16 @@
 import Link from "next/link";
 import { requireActor } from "@/lib/guard";
-import { reportOwner } from "@/lib/access";
+import { isFinance, reportOwner } from "@/lib/access";
+import { redirect } from "next/navigation";
 import { listReports,type Evidence } from "@/lib/workflows";
 import { fmtEur } from "@/lib/money";
 import { PageHeader,Panel,SectionTitle,Notice,Pill,StatTile } from "@/components/ui";
 import { WorkflowForm } from "@/components/workflow-form";
 export default async function ReportsPage() {
-  const a=await requireActor(),reports=listReports(a),owner=a.kind === "member" ? reportOwner(a.societyId) : null;
+  const a=await requireActor();
+  // The report carries the whole society's ledger evidence: finance roles and Council only.
+  if (a.kind === "member" && !isFinance(a)) redirect("/dashboard");
+  const reports=listReports(a),owner=a.kind === "member" ? reportOwner(a.societyId) : null;
   const canDraft=owner?.id === a.id;
   const year=new Date().getUTCFullYear()-(new Date().getUTCMonth()<8 ? 2 : 1);
   return <><PageHeader title={a.kind === "admin" ? "Council grant reviews" : "Annual grant report"} eyebrow={a.kind === "member" ? a.societyName : "Societies Council"}>Review the previous academic year, explain spending and propose next year’s grant. Council records its interview notes and decision; approval does not add money to the ledger.</PageHeader>

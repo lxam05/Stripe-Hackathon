@@ -2,12 +2,11 @@ import { assertResource } from "@/lib/access";
 import { NextResponse } from "next/server";
 import { replaceCard } from "@/lib/cards";
 import { apiError, handleError } from "@/lib/api";
-import { actorLabel, canManage, getActor } from "@/lib/session";
+import { actorLabel, getActor } from "@/lib/session";
 
 /** POST /api/cards/:id/replace — new card for the same officer after a cancellation. */
 export async function POST(_req: Request, ctx: RouteContext<"/api/cards/[id]/replace">) {
   const actor = await getActor();
-  if (!canManage(actor)) return apiError(403, "forbidden", "Only the treasurer can issue cards.");
   try {
     const { id } = await ctx.params;
     assertResource(actor,"card",id,true);

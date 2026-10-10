@@ -5,55 +5,77 @@ import { CardControls, IssueCardForm, MonthBar, ReplaceCardButton } from "@/comp
 import { CardStatusPill, Notice, PageHeader, Panel, SectionTitle, button } from "@/components/ui";
 import { VirtualCard, roleArt } from "@/components/virtual-card";
 import { requireMember } from "@/lib/guard";
+import { isFinance } from "@/lib/access";
 import { fmtDate, fmtEur } from "@/lib/money";
 import { getSociety, listCards, listEvents, listMembers } from "@/lib/queries";
 import { ROLE_LABEL } from "@/lib/roles";
 
-export const metadata = { title: "Officer cards" };
+export const metadata = { title: "Cards" };
 
 export default async function CardsPage() {
   const actor = await requireMember();
   const soc = getSociety(actor.societyId)!;
   const CARDS_PER_SOCIETY = cardCapacity(soc.id);
   const isTreasurer = actor.role === "treasurer";
+  // Treasurer and senior treasurer see every card; anyone else only their own.
+  const seesAll = isFinance(actor);
   const planActive = soc.plan_status === "active";
-  const all = listCards({ societyId: soc.id, includeCanceled: true });
+  // Officers only ever see their own card; the other four belong to other people.
+  const all = listCards({ societyId: soc.id, memberId: seesAll ? undefined : actor.id, includeCanceled: true });
   const live = all.filter((c) => c.status !== "canceled");
   const members = listMembers(soc.id);
   const withoutCard = members.filter((m) => !["member","senior_treasurer"].includes(m.role)).filter((m) => !live.some((c) => c.member_id === m.id)).map((m) => ({ id: m.id, name: m.name, role: m.role }));
   // Cancelled cards whose officer hasn't been given a new one yet.
   const replaceable = all.filter((c) => c.status === "canceled" && withoutCard.some((m) => m.id === c.member_id)).filter((c, i, xs) => xs.findIndex((x) => x.member_id === c.member_id) === i);
   const events = listEvents(soc.id, "open").map((e) => ({ id: e.id, name: e.name }));
-  const free = Math.max(0, CARDS_PER_SOCIETY - live.length);
+  const free = isTreasurer ? Math.max(0, CARDS_PER_SOCIETY - live.length) : 0;
   const canIssue = isTreasurer && planActive;
 
   return (
     <>
       <PageHeader
         eyebrow={soc.name}
-        title="Officer cards"
+        title={seesAll ? "Officer cards" : "My card"}
         actions={
           <Link href="/events" className={button("secondary")}>
-            Events
+            {seesAll ? "Events" : "My events"}
           </Link>
         }
       >
-        Your society has {CARDS_PER_SOCIETY} card slots. Cards belong to committee members across events. Optional event tags organise spending. Purchase and monthly thresholds trigger review after payment; they do not block spending.
+        {seesAll ? (
+          <>
+            Your society has {CARDS_PER_SOCIETY} card slots. Cards belong to committee members across events. Optional event tags organise spending. Purchase and
+            monthly thresholds trigger review after payment; they do not block spending.
+          </>
+        ) : (
+          <>Your society card. Your treasurer sets its review thresholds and which event it&rsquo;s tagged to.</>
+        )}
       </PageHeader>
 
       {!planActive && (
         <div className="mb-6">
-          <Notice tone="warn" title={`Your Society Plan ended on ${fmtDate(soc.plan_renews_at ?? "2026-09-30")}`}>
-            Every card is frozen until you renew.{" "}
-            <Link href="/plan" className="font-medium underline">
-              Renew for €49/year
-            </Link>{" "}
-            and they work again straight away.
-          </Notice>
+          {seesAll ? (
+            <Notice tone="warn" title={`Your Society Plan ended on ${fmtDate(soc.plan_renews_at ?? "2026-09-30")}`}>
+              Every card is frozen until you renew.{" "}
+              <Link href="/plan" className="font-medium underline">
+                Renew for €49/year
+              </Link>{" "}
+              and they work again straight away.
+            </Notice>
+          ) : (
+            <Notice tone="warn" title="Your card is frozen">
+              The society&rsquo;s plan has ended. It works again as soon as your treasurer renews it.
+            </Notice>
+          )}
         </div>
       )}
 
-      <SectionTitle aside={`${live.length} of ${CARDS_PER_SOCIETY} issued`}>Cards</SectionTitle>
+      {seesAll && <SectionTitle aside={`${live.length} of ${CARDS_PER_SOCIETY} issued`}>Cards</SectionTitle>}
+      {!seesAll && live.length === 0 && (
+        <Panel className="mb-10">
+          <p className="text-sm text-ink-2">You don&rsquo;t have a card yet. Ask your treasurer to issue one.</p>
+        </Panel>
+      )}
       <div className="mb-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {live.map((c) => {
           const onEvent = c.event_id && c.event_status === "open";
@@ -118,7 +140,7 @@ export default async function CardsPage() {
         ))}
       </div>
 
-      {replaceable.length > 0 && (
+      {isTreasurer && replaceable.length > 0 && (
         <>
           <SectionTitle>Cancelled</SectionTitle>
           <Panel pad={false} className="mb-10">
