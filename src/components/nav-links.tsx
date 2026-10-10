@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Building2,
+  Cpu,
   CalendarDays,
   CreditCard,
   FlaskConical,
@@ -26,6 +27,7 @@ const ICONS = {
   plan: BadgeCheck,
   simulator: CreditCard,
   eval: FlaskConical,
+  engine: Cpu,
   admin: Building2,
 };
 

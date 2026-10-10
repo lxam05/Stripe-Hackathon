@@ -271,6 +271,59 @@ export function latestAssessment(authId: string) {
     .get(authId) as AssessmentRow | undefined;
 }
 
+export interface EngineRow extends AssessmentRow {
+  authorization_id: string;
+  merchant_name: string;
+  amount_cents: number;
+  mcc: string;
+  decision: string;
+  rules_score: number;
+  decision_ms: number;
+  auth_source: string;
+  society_name: string;
+}
+
+function engineScope(scope: { societyId?: string; memberId?: string }) {
+  const where = ["ra.status != 'pending'"];
+  const args: unknown[] = [];
+  if (scope.societyId) {
+    where.push("a.society_id=?");
+    args.push(scope.societyId);
+  }
+  if (scope.memberId) {
+    where.push("a.member_id=?");
+    args.push(scope.memberId);
+  }
+  return { where, args };
+}
+
+/** Latest assessments with their purchase, for the technical risk-engine view. */
+export function listAssessments(scope: { societyId?: string; memberId?: string }, limit = 50) {
+  const { where, args } = engineScope(scope);
+  return getDb()
+    .prepare(
+      `SELECT ra.*, a.merchant_name, a.amount_cents, a.mcc, a.decision, a.rules_score, a.decision_ms, a.source auth_source, s.name society_name
+       FROM risk_assessment ra JOIN authorization a ON a.id=ra.authorization_id JOIN society s ON s.id=a.society_id
+       WHERE ${where.join(" AND ")} ORDER BY ra.created_at DESC, ra.rowid DESC LIMIT ?`,
+    )
+    .all(...args, limit) as EngineRow[];
+}
+
+/** Totals over every OpenRouter call (source='jev') in scope. */
+export function engineStats(scope: { societyId?: string; memberId?: string }) {
+  const { where, args } = engineScope(scope);
+  return getDb()
+    .prepare(
+      `SELECT SUM(ra.source='jev') ai_runs, SUM(ra.source!='jev' AND a.source!='seed') fallbacks,
+         AVG(CASE WHEN ra.source='jev' THEN ra.latency_ms END) avg_latency_ms,
+         SUM(CASE WHEN ra.source='jev' THEN COALESCE(ra.tokens_in,0)+COALESCE(ra.tokens_out,0) ELSE 0 END) tokens,
+         SUM(CASE WHEN ra.source='jev' THEN COALESCE(ra.cost_usd,0) ELSE 0 END) cost_usd,
+         AVG(a.decision_ms) avg_decision_ms
+       FROM risk_assessment ra JOIN authorization a ON a.id=ra.authorization_id WHERE ${where.join(" AND ")}`,
+    )
+    .get(...args) as { ai_runs: number | null; fallbacks: number | null; avg_latency_ms: number | null; tokens: number | null; cost_usd: number | null; avg_decision_ms: number | null };
+}
+
 /** Same-category purchases in the society; pass `memberId` to limit an officer to their own. */
 export function comparablePurchases(t: TxnRow, memberId?: string) {
   return getDb()

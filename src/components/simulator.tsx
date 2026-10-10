@@ -212,7 +212,7 @@ export function Simulator({
         {!latest ? (
           <Panel className="flex min-h-[260px] flex-col items-center justify-center text-center">
             <Zap className="h-8 w-8 text-ink-3" />
-            <p className="mt-3 max-w-xs text-sm text-ink-2">Pick a preset and fire. You&rsquo;ll see the real-time decision here, then JEV&rsquo;s analysis on the transaction page.</p>
+            <p className="mt-3 max-w-xs text-sm text-ink-2">Pick a preset and fire. You&rsquo;ll see the real-time decision here, then what the cardholder and treasurer see.</p>
           </Panel>
         ) : (
           <Panel className={cx("rise", latest.approved ? "ring-1 ring-ok/30" : "ring-1 ring-bad/30")} key={latest.authorization_id ?? results.length}>
@@ -240,9 +240,14 @@ export function Simulator({
               </ul>
             )}
             {latest.authorization_id && (
-              <Link href={`/transactions/${latest.authorization_id}`} className={button("primary", "mt-4")}>
-                See JEV&rsquo;s analysis <ArrowRight className="h-4 w-4" />
-              </Link>
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Link href={`/transactions/${latest.authorization_id}`} className={button("primary")}>
+                  See the purchase <ArrowRight className="h-4 w-4" />
+                </Link>
+                <Link href={`/engine/${latest.authorization_id}`} className={button("ghost")}>
+                  Engine view
+                </Link>
+              </div>
             )}
           </Panel>
         )}

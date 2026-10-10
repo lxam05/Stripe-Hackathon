@@ -37,7 +37,7 @@ export function ReviewActions({
       });
       setBusy(null);
       if (!res.ok) return setError((await res.json()).error?.message ?? "Couldn't save that.");
-      setDone(resolution === "legit" ? "Marked legitimate. JEV will treat similar purchases as normal." : resolution === "fraud" ? "Card cancelled and incident recorded." : "Receipt requested. The flag stays open until you close it.");
+      setDone(resolution === "legit" ? "Approved. Similar purchases will be treated as normal from now on." : resolution === "fraud" ? "Card cancelled and incident recorded." : "Receipt requested. The review stays open until you close it.");
       router.refresh();
     });
   };
@@ -74,7 +74,7 @@ export function ReviewActions({
           {spin("fraud") ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <OctagonX className="h-4 w-4" />} Misuse · cancel card
         </button>
       </div>
-      <p className="text-xs text-ink-3">This records an incident and cancels future card use. It does not reverse or refund the payment.</p>
+      <p className="text-xs text-ink-3">Misuse cancels the card for future purchases. It doesn&rsquo;t refund this payment.</p>
       {error && <Notice tone="bad">{error}</Notice>}
       {done && <Notice tone="ok">{done}</Notice>}
     </div>

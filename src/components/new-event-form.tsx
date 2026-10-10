@@ -180,10 +180,10 @@ export function NewEventForm({ cards, unallocatedCents, blockedLabels, defaults 
         </fieldset>
         <div>
           <label htmlFor="notes" className={label}>
-            Notes for JEV <span className="font-normal text-ink-3">(optional)</span>
+            What&rsquo;s it for? <span className="font-normal text-ink-3">(optional)</span>
           </label>
           <textarea id="notes" rows={2} className={field} placeholder="e.g. Pizza + soft drinks for freshers, room booked in the Student Centre" value={f.notes} onChange={(e) => set("notes", e.target.value)} maxLength={500} />
-          <p className="mt-1 text-xs text-ink-3">JEV reads this to judge whether a purchase fits the event.</p>
+          <p className="mt-1 text-xs text-ink-3">Helps spot purchases that don&rsquo;t fit the event.</p>
         </div>
         {error && <Notice tone="bad">{error}</Notice>}
         <div className="flex justify-end">

@@ -1,7 +1,6 @@
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { env, jevEnabled, stripeEnabled } from "@/lib/env";
 import { isFinance } from "@/lib/access";
 import { listReviews } from "@/lib/workflows";
 import { ROLE_LABEL } from "@/lib/roles";
@@ -25,11 +24,11 @@ export function AppShell({ actor, children }: { actor: Actor; children: ReactNod
       : isFinance(actor)
         ? [
             { href: "/dashboard", label: "Overview", icon: "dashboard" },
-            { href: "/cards", label: "Officer cards", icon: "cards" },
+            { href: "/cards", label: "Cards", icon: "cards" },
             { href: "/expenses", label: "Expenses", icon: "transactions" },
             { href: "/reports", label: "Grant report", icon: "admin" },
             { href: "/members", label: "Members", icon: "admin" },
-            { href: "/events", label: "Events · cost centres", icon: "events" },
+            { href: "/events", label: "Events", icon: "events" },
             { href: "/review", label: "Payment reviews", icon: "review", badge: flags },
             { href: "/transactions", label: "Transactions", icon: "transactions" },
             { href: "/funding", label: "Funding", icon: "funding" },
@@ -46,6 +45,7 @@ export function AppShell({ actor, children }: { actor: Actor; children: ReactNod
           ];
   const demo: NavItem[] = [
     { href: "/simulator", label: "Purchase simulator", icon: "simulator" },
+    { href: "/engine", label: "Risk engine", icon: "engine" },
     ...(actor.kind === "admin" ? [{ href: "/eval", label: "Evaluation", icon: "eval" } as NavItem] : []),
   ];
 
@@ -65,7 +65,6 @@ export function AppShell({ actor, children }: { actor: Actor; children: ReactNod
           <NavLinks items={demo} />
         </nav>
         <div className="mt-auto space-y-2 px-1">
-          <IntegrationStatus />
           <SwitchUser />
         </div>
       </aside>
@@ -112,28 +111,6 @@ function ActorChip({ actor }: { actor: Actor }) {
           {actor.kind === "member" ? `${ROLE_LABEL[actor.role]} · ${actor.societyName.replace(/^UCD /, "")}` : "UCD Societies Council"}
         </div>
       </div>
-    </div>
-  );
-}
-
-function IntegrationStatus() {
-  const rows = [
-    {
-      label: "Stripe",
-      ok: stripeEnabled(),
-      value: stripeEnabled() ? `Sandbox · Issuing ${env.issuingMode === "stripe" ? "live" : "simulated"}` : "Simulated checkout",
-    },
-    { label: "JEV", ok: jevEnabled(), value: jevEnabled() ? env.jevModel.split("/").pop()! : "AI offline · rules only" },
-  ];
-  return (
-    <div className="rounded-xl border border-line bg-surface/70 p-2.5 text-[11px] leading-relaxed text-ink-2">
-      {rows.map((r) => (
-        <div key={r.label} className="flex items-center gap-1.5">
-          <span className={`inline-block h-1.5 w-1.5 rounded-full ${r.ok ? "bg-ok" : "bg-warn"}`} aria-hidden />
-          <span className="font-medium text-ink">{r.label}</span>
-          <span className="truncate text-ink-3">{r.value}</span>
-        </div>
-      ))}
     </div>
   );
 }

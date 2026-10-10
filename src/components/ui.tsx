@@ -134,7 +134,7 @@ export function AiLabel({ fallback }: { fallback?: boolean }) {
     <Pill className="bg-paper-2 text-ink-2">Rules only</Pill>
   ) : (
     <Pill className="bg-mint/70 text-stone">
-      <Image src="/art/jev.webp" alt="" width={14} height={14} className="rounded-full" /> AI-generated · JEV
+      <Image src="/art/jev.webp" alt="" width={14} height={14} className="rounded-full" /> JEV decision
     </Pill>
   );
 }

@@ -49,7 +49,7 @@ export default async function Home() {
               <em className="text-stone-2">kept in balance.</em>
             </h1>
             <p className="mt-5 max-w-lg text-[17px] leading-relaxed text-ink-2">
-              Committee cards reduce out-of-pocket costs. Treasurers review new spending after payment, members track reimbursements, and senior treasurers prepare the annual grant report. <b className="font-semibold text-ink">JEV</b> adds evidence-backed risk analysis without delaying ordinary payments.
+              Committee cards reduce out-of-pocket costs. Treasurers review new spending after payment, members track reimbursements, and senior treasurers prepare the annual grant report. AI risk checks spot the unusual without delaying ordinary payments.
             </p>
           </div>
           <div className="relative mt-8 aspect-[16/9] overflow-hidden rounded-3xl lg:hidden">

@@ -1,8 +1,10 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { cardCapacity } from "@/lib/cards";
 import { CreditCard, Lock, Plus } from "lucide-react";
 import { CardControls, IssueCardForm, MonthBar, ReplaceCardButton } from "@/components/card-controls";
 import { CardStatusPill, Notice, PageHeader, Panel, SectionTitle, button } from "@/components/ui";
+import { CardDialog } from "@/components/card-dialog";
 import { VirtualCard, roleArt } from "@/components/virtual-card";
 import { requireMember } from "@/lib/guard";
 import { isFinance } from "@/lib/access";
@@ -42,14 +44,7 @@ export default async function CardsPage() {
           </Link>
         }
       >
-        {seesAll ? (
-          <>
-            Your society has {CARDS_PER_SOCIETY} card slots. Cards belong to committee members across events. Optional event tags organise spending. Purchase and
-            monthly thresholds trigger review after payment; they do not block spending.
-          </>
-        ) : (
-          <>Your society card. Your treasurer sets its review thresholds and which event it&rsquo;s tagged to.</>
-        )}
+        {seesAll ? "Tap a card to see its details" + (isTreasurer ? ", change its limits or freeze it." : ".") : "Tap your card to see its details."}
       </PageHeader>
 
       {!planActive && (
@@ -70,74 +65,98 @@ export default async function CardsPage() {
         </div>
       )}
 
-      {seesAll && <SectionTitle aside={`${live.length} of ${CARDS_PER_SOCIETY} issued`}>Cards</SectionTitle>}
+      {seesAll && <SectionTitle aside={`${live.length} of ${CARDS_PER_SOCIETY} slots used`}>Cards</SectionTitle>}
       {!seesAll && live.length === 0 && (
         <Panel className="mb-10">
           <p className="text-sm text-ink-2">You don&rsquo;t have a card yet. Ask your treasurer to issue one.</p>
         </Panel>
       )}
-      <div className="mb-10 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="mb-10 grid gap-6 sm:grid-cols-2 xl:grid-cols-3">
         {live.map((c) => {
           const onEvent = c.event_id && c.event_status === "open";
+          const role = ROLE_LABEL[c.holder_role] ?? c.holder_role;
+          const face = (
+            <VirtualCard
+              title={role}
+              art={roleArt(c.holder_role)}
+              societyName={soc.name}
+              holder={c.holder_name}
+              last4={c.last4}
+              expMonth={c.exp_month}
+              expYear={c.exp_year}
+              status={c.status}
+              network={c.network}
+              tag={onEvent ? `For ${c.event_name}` : "General spending"}
+            />
+          );
           return (
-            <Panel key={c.id} className="flex flex-col gap-4">
-              <VirtualCard
-                title={ROLE_LABEL[c.holder_role] ?? c.holder_role}
-                art={roleArt(c.holder_role)}
-                societyName={soc.name}
-                holder={c.holder_name}
-                last4={c.last4}
-                expMonth={c.exp_month}
-                expYear={c.exp_year}
-                status={c.status}
-                network={c.network}
-                tag={onEvent ? `For ${c.event_name}` : "General spending"}
-              />
-              <div className="flex items-center justify-between gap-2 text-sm">
-                <span className="truncate font-medium text-ink">{c.holder_name}</span>
-                <CardStatusPill status={c.status} />
-              </div>
-              {c.status === "inactive" && c.status_reason && <p className="-mt-2 text-xs text-ink-3">{c.status_reason}</p>}
-              {c.status === "pending" && c.error && <Notice tone="warn">{c.error}</Notice>}
-              <div>
-                <MonthBar spent={c.month_spent} limit={c.monthly_limit_cents} />
-                <div className="mt-1 text-xs text-ink-3 tabular">Review above {fmtEur(c.per_auth_cap_cents)} per purchase</div>
-              </div>
-              {onEvent && (
-                <Link href={`/events/${c.event_id}`} className="-mt-1 text-sm text-ink-2 hover:text-ink">
-                  Spending for <b className="font-medium text-ink">{c.event_name}</b> →
-                </Link>
-              )}
-              {isTreasurer && (
-                <div className="mt-auto border-t border-line pt-4">
-                  <CardControls card={c} events={events} planActive={planActive} />
+            <div key={c.id} className="max-w-[380px] space-y-2.5">
+              <CardDialog trigger={face} label={`Open ${c.holder_name}'s card`} title={<>{c.holder_name}<span className="block text-base text-ink-3">{role} · ••{c.last4}</span></>}>
+                <div className="space-y-5">
+                  <dl className="divide-y divide-line rounded-xl border border-line text-sm">
+                    <Row label="Status">
+                      <CardStatusPill status={c.status} />
+                    </Row>
+                    {c.status === "inactive" && c.status_reason && <Row label="Why">{c.status_reason}</Row>}
+                    <Row label="Spending for">
+                      {onEvent ? (
+                        <Link href={`/events/${c.event_id}`} className="font-medium underline decoration-line underline-offset-4">
+                          {c.event_name}
+                        </Link>
+                      ) : (
+                        "General society spending"
+                      )}
+                    </Row>
+                    <Row label="Review above">{fmtEur(c.per_auth_cap_cents)} per purchase</Row>
+                    <Row label="Monthly limit">{fmtEur(c.monthly_limit_cents)}</Row>
+                  </dl>
+                  <MonthBar spent={c.month_spent} limit={c.monthly_limit_cents} />
+                  {c.status === "pending" && c.error && <Notice tone="warn">{c.error}</Notice>}
+                  {isTreasurer && (
+                    <div className="border-t border-line pt-4">
+                      <CardControls card={c} events={events} planActive={planActive} />
+                    </div>
+                  )}
+                  {c.status === "active" && c.member_id === actor.id && (
+                    <Link href={`/simulator?card=${c.id}`} className={button("secondary", "w-full")}>
+                      <CreditCard className="h-4 w-4" /> Simulate a purchase
+                    </Link>
+                  )}
                 </div>
-              )}
-              {!isTreasurer && c.status === "active" && c.member_id === actor.id && (
-                <Link href={`/simulator?card=${c.id}`} className={button("secondary", "mt-auto")}>
-                  <CreditCard className="h-4 w-4" /> Simulate a purchase
-                </Link>
-              )}
-            </Panel>
+              </CardDialog>
+              <div className="px-1">
+                <div className="mb-1.5 flex items-center justify-between gap-2 text-sm">
+                  <span className="truncate font-medium text-ink">{seesAll ? c.holder_name : "This month"}</span>
+                  {c.status !== "active" && <CardStatusPill status={c.status} />}
+                </div>
+                <MonthBar spent={c.month_spent} limit={c.monthly_limit_cents} />
+              </div>
+            </div>
           );
         })}
 
-        {Array.from({ length: free }, (_, i) => (
-          <div key={`free-${i}`} className="flex flex-col gap-4 rounded-2xl border border-dashed border-line-strong bg-surface/50 p-5">
-            <div className="flex aspect-[1.586] w-full max-w-[380px] flex-col items-center justify-center gap-2 rounded-[18px] border border-dashed border-line-strong text-ink-3">
+        {Array.from({ length: free }, (_, i) => {
+          const slot = (
+            <div className="flex aspect-[1.586] w-full max-w-[380px] flex-col items-center justify-center gap-2 rounded-[18px] border border-dashed border-line-strong bg-surface/50 text-ink-3">
               {canIssue ? <Plus className="h-6 w-6" /> : <Lock className="h-6 w-6" />}
-              <span className="text-sm">Card slot {live.length + i + 1} of {CARDS_PER_SOCIETY}</span>
+              <span className="text-sm">{canIssue ? "Issue a card" : `Free slot ${live.length + i + 1} of ${CARDS_PER_SOCIETY}`}</span>
             </div>
-            {i === 0 &&
-              (canIssue ? (
-                <IssueCardForm members={withoutCard} events={events} />
+          );
+          return (
+            <div key={`free-${i}`} className="max-w-[380px]">
+              {canIssue ? (
+                <CardDialog trigger={slot} label="Issue a new card" title="Issue a card">
+                  <IssueCardForm members={withoutCard} events={events} />
+                </CardDialog>
               ) : (
-                <p className="text-sm text-ink-3">
-                  {!planActive ? "Renew the Society Plan to issue cards." : "Your treasurer can issue this card to an officer."}
-                </p>
-              ))}
-          </div>
-        ))}
+                slot
+              )}
+              {i === 0 && !canIssue && (
+                <p className="mt-2 px-1 text-xs text-ink-3">{!planActive ? "Renew the Society Plan to issue cards." : "Your treasurer issues cards."}</p>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       {isTreasurer && replaceable.length > 0 && (
@@ -161,5 +180,14 @@ export default async function CardsPage() {
         </>
       )}
     </>
+  );
+}
+
+function Row({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+      <dt className="text-ink-3">{label}</dt>
+      <dd className="min-w-0 text-right text-ink">{children}</dd>
+    </div>
   );
 }

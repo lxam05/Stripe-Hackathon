@@ -41,7 +41,7 @@ export const SOCIETY_PLAN = {
     "5 committee cards; extra slots €10 each for the remaining plan year",
     "Post-payment reviews, recurring approvals and member expenses",
     "Annual spending report and Council grant review",
-    "JEV risk analysis on every purchase",
+    "AI risk checks on every purchase",
     "Public sponsor top-up page + QR code",
     "Live ledger that reconciles itself",
   ],

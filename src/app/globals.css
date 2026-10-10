@@ -158,3 +158,17 @@ body {
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
+
+/* Centered modal sheet (the reset strips the UA's dialog centering). */
+dialog.sheet {
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  width: min(32rem, calc(100% - 2rem));
+  max-width: none;
+}
+dialog.sheet::backdrop {
+  background: rgb(20 24 22 / 0.45);
+  backdrop-filter: blur(4px);
+}

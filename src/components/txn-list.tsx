@@ -3,7 +3,7 @@ import { ChevronRight, LoaderCircle } from "lucide-react";
 import { mccInfo } from "@/lib/mcc";
 import { fmtDateTime, fmtEur } from "@/lib/money";
 import type { TxnRow } from "@/lib/queries";
-import { cx, DecisionBadge, RiskBadge } from "./ui";
+import { cx, DecisionBadge } from "./ui";
 
 export function TxnList({ rows, showSociety, showEvent = true, empty }: { rows: TxnRow[]; showSociety?: boolean; showEvent?: boolean; empty?: string }) {
   if (!rows.length) return <p className="px-5 py-8 text-center text-sm text-ink-3">{empty ?? "No purchases yet."}</p>;
@@ -11,7 +11,7 @@ export function TxnList({ rows, showSociety, showEvent = true, empty }: { rows: 
     <ul className="divide-y divide-line">
       {rows.map((t) => {
         const pending = t.ra_status === "pending";
-        const level = t.ra_level as "low" | "medium" | "high" | null;
+        const review = t.flag_status && ["open", "receipt_requested"].includes(t.flag_status);
         return (
           <li key={t.id}>
             <Link href={`/transactions/${t.id}`} className="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-paper-2/60 sm:px-5">
@@ -19,9 +19,7 @@ export function TxnList({ rows, showSociety, showEvent = true, empty }: { rows: 
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <span className="truncate font-medium text-ink">{prettyMerchant(t.merchant_name)}</span>
-                  {t.flag_status && ["open", "receipt_requested"].includes(t.flag_status) && (
-                    <span className="h-2 w-2 shrink-0 rounded-full bg-coral" aria-label="Open flag" />
-                  )}
+                  {review && <span className="h-2 w-2 shrink-0 rounded-full bg-coral sm:hidden" aria-label="Needs review" />}
                 </div>
                 <div className="truncate text-xs text-ink-3">
                   {fmtDateTime(t.created_at)} · {mccInfo(t.mcc).label}
@@ -30,12 +28,14 @@ export function TxnList({ rows, showSociety, showEvent = true, empty }: { rows: 
                 </div>
               </div>
               <div className="hidden shrink-0 items-center gap-1.5 sm:flex">
-                {pending ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-paper-2 px-2.5 py-1 text-xs text-ink-2">
-                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> JEV checking
-                  </span>
+                {review ? (
+                  <span className="rounded-full bg-coral/15 px-2.5 py-1 text-xs font-medium text-[#a8452c]">Needs review</span>
                 ) : (
-                  <RiskBadge level={level} compact />
+                  pending && (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-paper-2 px-2.5 py-1 text-xs text-ink-2">
+                      <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Checking
+                    </span>
+                  )
                 )}
                 <DecisionBadge decision={t.decision} status={t.status} />
               </div>

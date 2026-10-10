@@ -49,7 +49,7 @@ No society member may access another society's protected records or receipts. Co
 
 ### Network decision
 
-A synchronous SQLite transaction checks active card/plan/slot entitlement, available society funds and configured blocked MCCs. These can decline a purchase. No LLM is called in this path. A successful authorization reserves a hold; capture converts the hold into recorded spending.
+A synchronous SQLite transaction checks active card/plan/slot entitlement, available society funds and configured blocked MCCs. These can decline a purchase. No model is called in this path. A successful authorization reserves a hold; capture converts the hold into recorded spending.
 
 Purchase and monthly card thresholds are **soft review thresholds**. Event dates and event budget overruns are advisory. A high aggregate risk score alone does not decline spending. Event budgets do not ring-fence funds from other society purchases.
 

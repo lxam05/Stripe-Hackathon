@@ -2,25 +2,25 @@ import Link from "next/link";
 import { requireActor } from "@/lib/guard";
 import { listMandates,listReviews } from "@/lib/workflows";
 import { fmtEur,fmtDate } from "@/lib/money";
-import { PageHeader,Panel,SectionTitle,Notice,Pill } from "@/components/ui";
+import { PageHeader,Panel,SectionTitle,Pill } from "@/components/ui";
 import { WorkflowForm } from "@/components/workflow-form";
 import { AutoRefresh } from "@/components/auto-refresh";
 import { listFlags } from "@/lib/queries";
 import { isOfficer, scopeOf } from "@/lib/access";
+import { plainText } from "@/lib/explain";
 export default async function ReviewPage() {
   const a=await requireActor(),reviews=listReviews(a),manage=a.kind === "member" && a.role === "treasurer";
   const open=reviews.filter(r=>["pending","receipt_requested"].includes(r.status));
   const year=new Date().getUTCMonth()>=8 ? new Date().getUTCFullYear()+1 : new Date().getUTCFullYear();
   // Officers only see risk investigations on their own card.
   const incidents=listFlags({...scopeOf(a),status:"open"});
-  return <><AutoRefresh active ms={10000}/><PageHeader title={isOfficer(a) ? "My payment reviews" : "Payment reviews"} eyebrow={a.kind === "member" ? a.societyName : "Societies Council"}>Review after payment. First-time purchases and exceptions need a treasurer decision; matching recurring payments pass routine review automatically.</PageHeader>
-    <Notice title="A review is not a card-network decision">Approval records legitimate society spending. Marking misuse does not refund or reverse a payment. Record recovery follow-up, and freeze a card separately if needed.</Notice>
-    {incidents.length>0 && <Panel className="mt-4"><SectionTitle>Risk investigations</SectionTitle><p className="mb-2 text-sm">Separate from routine spending approval; includes blocked attempts and frozen cards.</p><ul className="space-y-2">{incidents.slice(0,8).map(f=><li key={f.id} className="text-sm"><Link className="underline" href={`/transactions/${f.id}`}>{f.merchant_name} · {fmtEur(f.amount_cents)} · {f.f_severity} risk</Link></li>)}</ul></Panel>}
+  return <><AutoRefresh active ms={10000}/><PageHeader title={isOfficer(a) ? "My payment reviews" : "Payment reviews"} eyebrow={a.kind === "member" ? a.societyName : "Societies Council"}>{isOfficer(a) ? "Purchases of yours the treasurer is checking. Nothing for you to do unless they ask." : "Payments that went through but look new or unusual. Approve the expected ones; recurring payments you approve are handled automatically."}</PageHeader>
+    {incidents.length>0 && <Panel className="mt-4"><SectionTitle>Flagged as risky</SectionTitle><p className="mb-2 text-sm text-ink-2">Includes blocked attempts and frozen cards.</p><ul className="space-y-2">{incidents.slice(0,8).map(f=><li key={f.id} className="text-sm"><Link className="underline" href={`/transactions/${f.id}`}>{f.merchant_name} · {fmtEur(f.amount_cents)}</Link></li>)}</ul></Panel>}
     <div className="mt-6"><SectionTitle aside={`${open.length} to review`}>Needs attention</SectionTitle></div>
     {!open.length && <Panel><p>No payments need your review.</p></Panel>}
     <div className="space-y-4">{open.map(r=><Panel key={r.authorization_id}>
       <div className="flex flex-wrap justify-between gap-2"><Link href={`/transactions/${r.authorization_id}`} className="text-lg font-semibold underline decoration-line underline-offset-4">{r.merchant_name} · {fmtEur(r.amount_cents)}</Link><Pill className="bg-warn-bg text-warn">{r.status.replaceAll("_"," ")}</Pill></div>
-      <p className="mt-1 text-sm text-ink-3">{r.member_name} · {fmtDate(r.created_at)}{a.kind === "admin" ? ` · ${r.society_name}` : ""}</p><p className="my-3 text-sm">{r.reason}</p>
+      <p className="mt-1 text-sm text-ink-3">{r.member_name} · {fmtDate(r.created_at)}{a.kind === "admin" ? ` · ${r.society_name}` : ""}</p><p className="my-3 text-sm">{plainText(r.reason) || "First payment to this shop."}</p>
       {manage && <WorkflowForm resource="reviews" id={r.authorization_id} fields={[
         {name:"note",label:"Decision note / receipt request / recovery follow-up",type:"textarea"},
         {name:"recurring",label:"Also approve future recurring payments (only with Approve spending)",type:"checkbox"},

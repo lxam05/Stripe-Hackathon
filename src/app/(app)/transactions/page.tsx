@@ -27,7 +27,7 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/tra
     <>
       <AutoRefresh active={rows.some((r) => r.ra_status === "pending")} />
       <PageHeader eyebrow={actor.kind === "member" ? actor.societyName : "All societies"} title={officer ? "My purchases" : "Transactions"}>
-        {officer ? "Every purchase on your card" : "Every authorisation"}, approved or declined, with its real-time decision and JEV&rsquo;s assessment.
+        {officer ? "Every purchase on your card" : "Every card purchase"}, paid or blocked. Open one to see why.
       </PageHeader>
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex gap-1 rounded-full border border-line bg-surface p-1">
@@ -44,7 +44,7 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/tra
           <input
             name="q"
             defaultValue={q}
-            placeholder="Merchant, event or MCC"
+            placeholder="Search shop or event"
             className="w-full rounded-full border border-line-strong bg-white py-2 pl-9 pr-3 text-sm focus:border-stone-2 focus:outline-none focus:ring-2 focus:ring-mint"
             aria-label="Search transactions"
           />
