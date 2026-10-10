@@ -374,6 +374,7 @@ async function main() {
   const passed = results.filter((r) => r.pass).length;
   console.log(`\n${passed}/${results.length} passed`);
   fs.writeFileSync(path.resolve("data/test-results.json"), JSON.stringify({ ran_at: new Date().toISOString(), passed, total: results.length, results }, null, 2));
+  db.close(); // Windows can't delete an open SQLite file
   for (const f of ["data/test.db", "data/test.db-wal", "data/test.db-shm"]) fs.rmSync(f, { force: true });
   process.exit(passed === results.length ? 0 : 1);
 }
