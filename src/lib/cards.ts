@@ -172,6 +172,9 @@ export async function syncSocietyCardsFromStripe(societyId: string) {
       if (!member) continue;
       const localId = card.metadata?.local_card_id || `card_${card.id}`;
       const local = db.prepare(`SELECT id FROM card WHERE stripe_card_id=? OR id=?`).get(card.id, localId) as { id: string } | undefined;
+      seen.add(card.id);
+      // Cards cancelled in earlier demo runs stay out of a fresh database.
+      if (!local && card.status === "canceled") continue;
       const profile = isCardRestrictionProfile(card.metadata?.restriction_profile) ? card.metadata.restriction_profile : "standard";
       const limits = remoteLimits(card, member.role);
       if (local) {
@@ -191,7 +194,6 @@ export async function syncSocietyCardsFromStripe(societyId: string) {
         new Date(card.created * 1000).toISOString(),
         memberId,
       );
-      seen.add(card.id);
     }
   });
   upsert(remote);
@@ -215,6 +217,54 @@ export async function cancelLegacySeededStripeCards() {
   }
   for (const id of ids) await getStripe().issuing.cards.update(id, { status: "canceled" });
   return ids.length;
+}
+
+/** Drama's treasurer: the one officer whose card exists before the demo starts. */
+export const DEMO_TREASURER_ID = "mem_drama_1";
+
+/**
+ * Demo empty state on the shared sandbox: exactly one live site-issued card in the society, the
+ * treasurer's (her oldest is reused, and created only if she has none). Every other live card,
+ * such as the events officer's from a previous run, is cancelled so it can be issued live again.
+ * Call after seeding; the local projection is then refreshed from Stripe.
+ */
+export async function resetDemoCards(societyId: string, log: (s: string) => void = () => {}) {
+  if (!env.stripeSecretKey) throw new UserError("stripe_required", "Stripe Issuing is not configured.", 503);
+  const s = getStripe();
+  const live: Stripe.Issuing.Card[] = [];
+  for (const status of ["active", "inactive"] as const) {
+    for await (const c of s.issuing.cards.list({ status, limit: 100 })) {
+      if (c.metadata?.balance_origin === SITE_CARD_ORIGIN && c.metadata?.society_id === societyId) live.push(c);
+    }
+  }
+  const keep = live.filter((c) => c.metadata?.member_id === DEMO_TREASURER_ID).sort((a, b) => a.created - b.created)[0];
+  const cancel = live.filter((c) => c.id !== keep?.id);
+  for (const c of cancel) await s.issuing.cards.update(c.id, { status: "canceled" });
+  if (cancel.length) log(`cancelled ${cancel.length} earlier demo card${cancel.length === 1 ? "" : "s"} in Stripe`);
+  if (keep && keep.status !== "active") await s.issuing.cards.update(keep.id, { status: "active" });
+
+  if (keep) {
+    await syncSocietyCardsFromStripe(societyId);
+    log(`treasurer's card ••${keep.last4} reused from Stripe`);
+    return;
+  }
+  const limits = defaultLimits("treasurer");
+  const r = await createOfficerCard(
+    { societyId, memberId: DEMO_TREASURER_ID, perAuthCapCents: limits.perAuthCapCents, monthlyLimitCents: limits.monthlyLimitCents, restrictionProfile: "standard" },
+    "demo-prepare",
+  );
+  if (!r.issued.ok) throw new UserError("card_issue_failed", `Stripe did not create the treasurer's card: ${r.issued.error}`, 502);
+  log("issued the treasurer's card in Stripe");
+}
+
+/** A card's number, expiry and CVC from Stripe, for its cardholder to pay online with. Sandbox only (env.ts refuses live keys). */
+export async function stripeCardDetails(cardId: string) {
+  const row = getDb().prepare(`SELECT stripe_card_id FROM card WHERE id=? AND network='stripe' AND stripe_card_id IS NOT NULL`).get(cardId) as
+    | { stripe_card_id: string }
+    | undefined;
+  if (!row || !env.stripeSecretKey) return null;
+  const c = await getStripe().issuing.cards.retrieve(row.stripe_card_id, { expand: ["number", "cvc"] });
+  return { number: c.number ?? "", cvc: c.cvc ?? "", expMonth: c.exp_month, expYear: c.exp_year };
 }
 
 interface CardRecord {

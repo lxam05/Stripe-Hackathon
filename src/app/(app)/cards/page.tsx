@@ -1,10 +1,11 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { cardCapacity, syncSocietyCardsFromStripe } from "@/lib/cards";
-import { CreditCard, Lock, Plus } from "lucide-react";
+import { Lock, Plus } from "lucide-react";
 import { CardControls, IssueCardForm, MonthBar, ReplaceCardButton } from "@/components/card-controls";
 import { CardStatusPill, Notice, PageHeader, Panel, SectionTitle, button } from "@/components/ui";
 import { CardDialog } from "@/components/card-dialog";
+import { CardDetails } from "@/components/card-details";
 import { VirtualCard, roleArt } from "@/components/virtual-card";
 import { requireMember } from "@/lib/guard";
 import { isFinance } from "@/lib/access";
@@ -136,11 +137,7 @@ export default async function CardsPage() {
                       <CardControls card={c} events={events} planActive={planActive} />
                     </div>
                   )}
-                  {c.status === "active" && (
-                    <Link href={`/shop?card=${c.id}`} className={button("secondary", "w-full")}>
-                      <CreditCard className="h-4 w-4" /> Try this card
-                    </Link>
-                  )}
+                  {c.status === "active" && c.member_id === actor.id && <CardDetails cardId={c.id} holder={c.holder_name} />}
                 </div>
               </CardDialog>
               <div className="px-1">

@@ -110,7 +110,7 @@ Grant drafting uses aggregate financial evidence only, with a human review requi
 
 Primary: Overview, Committee cards, Payment reviews, Expenses, Grant report, Members.
 Supporting: Events/cost centres, Transactions, Funding, Plan.
-Demo tools: two-item Campus marketplace, Purchase simulator, Council-only Evaluation.
+Demo tools: two fictional outside shops (Slice Republic, Pixel Vault) that charge real Stripe Issuing cards, Purchase simulator, Council-only Evaluation.
 Council: society onboarding/leadership and submitted grant reports, with read-only spending oversight.
 
 Each flow must expose ownership, state, empty/error feedback and what the next action actually does. Never call an approval a refund or a report estimate an awarded grant.
@@ -143,7 +143,7 @@ The automated results are generated into `data/test-results.json`; do not claim 
 
 1. Top up UCD Drama Society by €250 and continue from the success page as Aoife, treasurer.
 2. Start with zero cards and issue Orla a Stripe sandbox card from the site with a €200 per-purchase limit, €500 monthly limit and Standard society spending profile.
-3. Open the Campus marketplace from Orla's newly issued card and buy the €18.40 pizza.
+3. As the cardholder, open a shop from the card and buy the €18.40 pizza at Slice Republic; try the PlayStation Portal (flagged) and PlayStation 5 Pro (declined) at Pixel Vault.
 4. Show the receipt's cardholder, masked Stripe card and exact society balance movement, then show Orla's increased monthly spend on the dashboard.
 5. Buy the console with a site-issued card to create the contextual JEV review; no seeded card or transaction is used.
 6. Optional: reproduce the console purchase in the marketplace or use the simulator for broader rules/failure cases.

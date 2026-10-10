@@ -318,13 +318,6 @@ CREATE TABLE IF NOT EXISTS card_slot_purchase (
   status TEXT NOT NULL DEFAULT 'pending',
   created_at TEXT NOT NULL
 );
-CREATE TABLE IF NOT EXISTS demo_purchase_request (
-  request_key TEXT PRIMARY KEY,
-  card_id TEXT NOT NULL REFERENCES card(id),
-  product_id TEXT NOT NULL,
-  response_json TEXT NOT NULL,
-  created_at TEXT NOT NULL
-);
 `;
 
 type DB = Database.Database;

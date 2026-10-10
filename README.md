@@ -54,7 +54,9 @@ Rules live in `src/lib/access.ts` and are enforced on every page and API route, 
 - Top up Drama, then use the success-page action to continue as Aoife.
 - Open Cards and issue an officer card. Balance creates the cardholder/card in Stripe Issuing; no demo card is substituted if Stripe is unavailable.
 - Set the per-purchase limit, monthly limit and merchant profile during issuance.
-- Use “Try this card” to open the Campus marketplace with that real Stripe sandbox card selected.
+- `npm run demo:prepare` leaves exactly one card, Aoife's (treasurer), in Stripe and cancels earlier run cards. As Aoife, issue Cian (events officer) his card live; pick an event under “Spending for” so food spend reads as event spend.
+- Continue as Cian, open his card and choose a shop: **Slice Republic** (pizza, the happy path) or **Pixel Vault** (PlayStation Portal: paid, then flagged for review; PlayStation 5 Pro: over his €500 limit, declined by Stripe). Each is a fictional outside shop with its own card form, autofilled with his card in the demo. The shop charges the real Stripe Issuing card with its own merchant name and category; Balance's webhook approves or declines in real time. Stripe Checkout isn't used because sandbox Checkout rejects Issuing card numbers.
+- From the shop's confirmation, go back to the Balance dashboard to see the payment, and Payment reviews for why it was flagged.
 - Purchases, authorizations and card status changes reconcile through Stripe webhooks.
 
 ## Important behavior
