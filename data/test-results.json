@@ -1,5 +1,5 @@
 {
-  "ran_at": "2026-10-10T10:47:31.617Z",
+  "ran_at": "2026-10-10T11:16:10.060Z",
   "passed": 32,
   "total": 32,
   "results": [
@@ -184,7 +184,7 @@
       "kind": "Failure",
       "name": "OpenRouter error / timeout",
       "expected": "Rules-only result marked AI unavailable; auth unaffected",
-      "actual": "approved, rules_fallback: AI unavailable: 401 Missing Authentication header",
+      "actual": "approved, rules_fallback: AI unavailable: OpenRouter 401: {\"error\":{\"message\":\"Missing",
       "pass": true
     },
     {
@@ -198,25 +198,25 @@
     {
       "id": "J2",
       "kind": "Failure",
-      "name": "Hallucinated evidence in a JEV flag",
-      "expected": "Flag citing €999 (not in input) marked unverified",
-      "actual": "verified: true, false",
+      "name": "Flag evidence comes from input fields, not the model",
+      "expected": "Both flags (category, timing) present and every € / MCC reference verified",
+      "actual": "MCC_MISMATCH:true, TIMING:true",
       "pass": true
     },
     {
       "id": "J3",
       "kind": "Failure",
       "name": "Privacy & request shape sent to OpenRouter",
-      "expected": "No member names/emails; schema + data_collection=deny",
-      "actual": "names absent, schema true, provider {\"data_collection\":\"deny\"}",
+      "expected": "No member names/emails; Jev model with typed risk/action questions",
+      "actual": "names absent, model typesafe/jev-1.13, questions 11",
       "pass": true
     },
     {
       "id": "F2b",
       "kind": "Failure",
-      "name": "JEV returns non-JSON twice (stubbed)",
+      "name": "Decisions API returns garbage twice (stubbed)",
       "expected": "One retry, then rules fallback",
-      "actual": "2 calls, rules_fallback: AI unavailable: invalid JSON after retry",
+      "actual": "2 calls, rules_fallback: AI unavailable: SyntaxError: Unexpected token 'u', \"upstream hiccup\" is not valid JSON",
       "pass": true
     },
     {

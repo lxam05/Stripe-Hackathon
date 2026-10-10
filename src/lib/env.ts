@@ -22,8 +22,8 @@ export const env = {
     | "mock",
   openRouterKey: process.env.OPENROUTER_API_KEY?.trim() || "",
   openRouterBaseUrl: process.env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1",
-  jevModel: process.env.JEV_MODEL?.trim() || "anthropic/claude-haiku-5.5",
-  jevTimeoutMs: Number(process.env.JEV_TIMEOUT_MS || 8000),
+  jevModel: process.env.JEV_MODEL?.trim() || "typesafe/jev-1.13",
+  jevTimeoutMs: Number(process.env.JEV_TIMEOUT_MS || 3000),
   dbPath: process.env.BALANCE_DB_PATH || "data/balance.db",
 };
 

@@ -5,7 +5,7 @@
 Every society gets **five virtual officer cards**, one per committee officer, each with its own per-purchase and monthly limit. Events are budgets: point a card at an event and its purchases come out of that budget, within the event's dates. Every purchase is checked twice:
 
 1. **In real time by deterministic rules** (event budget, card limits, blocked merchant categories, event dates, 13 scored risk signals), inside the card network's authorisation window. Typical decision: under 1 ms.
-2. **Straight after by JEV**, an LLM risk analyst called through **OpenRouter**. It compares the purchase with the society's own history, the purchaser's pattern and the event's context, then explains anything odd in plain English with evidence the treasurer can check. AI can raise suspicion but never approve, and auto-freeze needs **both** layers to agree.
+2. **Straight after by JEV**, which runs on **Jev** (TypeSafe's System One decision model) through **OpenRouter's Decisions API**. Jev answers typed questions about the purchase (overall risk, recommended action, and one yes/no per red flag) with calibrated probabilities in ~350 ms p95 for about $0.0001 per purchase. Balance turns those into plain-English evidence built only from real transaction fields, so nothing can be hallucinated. AI can raise suspicion but never approve, and auto-freeze needs **both** layers to agree.
 
 Sponsors and UCD top up a society's budget through **Stripe Checkout**; societies subscribe to the **€49/year Society Plan** (Stripe bonus).
 
@@ -24,7 +24,7 @@ No keys are required. Without them, Balance runs a **simulated checkout** (it ne
 
 | Variable | Turns on |
 |---|---|
-| `OPENROUTER_API_KEY` (+ `JEV_MODEL`, default `anthropic/claude-haiku-5.5`) | JEV analysis on every purchase, the evaluation run |
+| `OPENROUTER_API_KEY` (+ `JEV_MODEL`, default `typesafe/jev-1.13`) | JEV analysis on every purchase, the evaluation run |
 | `STRIPE_SECRET_KEY` (sandbox `sk_test_…` only; the app refuses live keys) | Real Stripe Checkout for top-ups and the Society Plan subscription |
 | `STRIPE_WEBHOOK_SECRET` | Signature-verified webhooks. Run `stripe listen --forward-to localhost:3000/api/webhooks/stripe` |
 | `ISSUING_MODE=stripe` | Real Stripe Issuing virtual cards and test-helper authorisations (needs Issuing enabled on the sandbox account) |
@@ -34,7 +34,7 @@ Other scripts:
 ```bash
 npm test           # PRD §11.2 test matrix (32 ordinary / boundary / failure cases) → data/test-results.json
 npm run eval       # JEV over the labelled eval set: rules vs JEV vs combined (needs OPENROUTER_API_KEY)
-npm run eval -- openai/gpt-5-mini   # compare another OpenRouter model
+npm run eval -- ~typesafe/jev-latest   # compare another Jev release
 npm run seed       # regenerate the synthetic year (fixed seed)
 npm run typecheck && npm run lint
 ```
