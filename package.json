@@ -11,7 +11,8 @@
     "test": "node --env-file-if-exists=.env --import tsx scripts/test.ts",
     "eval": "node --env-file-if-exists=.env --import tsx scripts/eval.ts",
     "typecheck": "tsc --noEmit",
-    "art": "node scripts/process-art.mjs"
+    "art": "node scripts/process-art.mjs",
+    "stripe:listen": "node --env-file-if-exists=.env scripts/stripe-listen.mjs"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",

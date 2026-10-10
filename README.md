@@ -21,7 +21,7 @@ JEV runs TypeSafe's Jev decision model through OpenRouter's Decisions API after 
 | `GRANT_DRAFT_MODEL` | Optional OpenRouter chat model for report prose; without it reports use a labelled template |
 | `STRIPE_SECRET_KEY` | Sandbox Checkout; live keys are rejected |
 | `STRIPE_WEBHOOK_SECRET` | Signature-verified Stripe webhooks |
-| `ISSUING_MODE=stripe` | Sandbox Stripe Issuing instead of the local adapter |
+| `ISSUING_MODE=stripe` | Sandbox Stripe Issuing instead of the local adapter: seeding issues every officer a real virtual card |
 
 ```sh
 npm run typecheck
@@ -67,11 +67,17 @@ Recurring mandates are explicit: cardholder + merchant identity + currency + amo
 
 €49/year includes five card slots. A €10 extra slot is valid for the remaining plan year and expires at renewal, with no automatic renewal. Cancelled cards release slots; pending/frozen cards count. Extra-card revenue is not society funding.
 
-Existing remotely issued Stripe cards may still carry old hard amount limits. Saving their thresholds clears those legacy limits. Do this deliberately in the sandbox; local migration does not silently change remote cards.
+Card caps are review thresholds, not hard limits. Stripe cards carry only a €10,000 monthly backstop (the Societies Office ceiling), which also replaces Stripe's default 500 USD/day limit. Saving thresholds on an older remote card moves it onto that backstop.
 
 ## Integrations
 
-Stripe uses a signature-verified endpoint at `/api/webhooks/stripe`. Webhooks are required for billing and asynchronous checkout: configure completed/async-success/failure, invoice paid/payment-failed, subscription lifecycle and Issuing events. Never substitute the success page for webhook fulfilment. Use `stripe listen --forward-to localhost:3000/api/webhooks/stripe` with the matching sandbox.
+Stripe uses a signature-verified endpoint at `/api/webhooks/stripe`. Webhooks are required for billing and asynchronous checkout: configure completed/async-success/failure, invoice paid/payment-failed, subscription lifecycle and Issuing events. Never substitute the success page for webhook fulfilment. Run `npm run stripe:listen` (it forwards exactly the events the endpoint handles, using `STRIPE_SECRET_KEY`) and put the `whsec_…` it prints into `STRIPE_WEBHOOK_SECRET`.
+
+Stripe Issuing demo (`ISSUING_MODE=stripe`):
+
+1. `npm run seed`: gives every seeded officer one Stripe cardholder and one virtual card, cancels cards from earlier seeds, and tops up the sandbox Issuing balance. Cardholders are people, not cards: reseeding and replacement cards reuse the same `ich_…`.
+2. `npm run stripe:listen` in a second terminal.
+3. `npm run dev`. The purchase simulator fires real sandbox authorisations through Stripe test helpers, and the webhook approves or declines them in real time. The time override still applies.
 
 This project rejects live Stripe keys. Real Issuing eligibility, funding, consent, tax/VAT registrations and institutional approval remain launch work; Checkout receipts are not proof of available Issuing funds.
 

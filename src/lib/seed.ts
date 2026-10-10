@@ -6,7 +6,7 @@ import { postEntry, societyBalances } from "./ledger";
 import { seedGlobalPolicy, setPolicy } from "./policy";
 import { addDays, dublinToIso } from "./money";
 import type { EventType } from "./mcc";
-import { PLAN_LAPSED_REASON } from "./cards";
+import { PLAN_LAPSED_REASON, syncSeededCardsToStripe } from "./cards";
 import { defaultLimits, MAX_MONTHLY_LIMIT_CENTS, type Role } from "./roles";
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -651,6 +651,8 @@ export async function seed(opts: { log?: (s: string) => void } = {}): Promise<Se
     flagsOpen: (db.prepare(`SELECT COUNT(*) n FROM flag WHERE status='open'`).get() as { n: number }).n,
   };
   seedWorkflowExamples();
+  // ISSUING_MODE=stripe: back every seeded officer card with a real sandbox Issuing card.
+  await syncSeededCardsToStripe(log);
   log(JSON.stringify(summary));
   return summary;
 }

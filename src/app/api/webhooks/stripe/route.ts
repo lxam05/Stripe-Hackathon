@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import type Stripe from "stripe";
+import Stripe from "stripe";
 import { captureAuthorization, decideAuthorization, releaseAuthorization } from "@/lib/authorize";
 import { enqueueAssessment } from "@/lib/assess";
 import { getDb, newId, nowIso } from "@/lib/db";
@@ -41,7 +41,7 @@ export async function POST(req: Request) {
           mcc: auth.merchant_data.category_code,
           merchantCity: auth.merchant_data.city ?? "",
           merchantCountry: auth.merchant_data.country ?? "IE",
-          at: new Date(auth.created * 1000).toISOString(),
+          at: authTime(card.id, auth),
           stripeAuthId: auth.id,
           currency: auth.currency,
         })
@@ -49,7 +49,8 @@ export async function POST(req: Request) {
     if (d?.authorizationId) enqueueAssessment(d.authorizationId);
     return NextResponse.json(
       { approved: Boolean(d?.approved), metadata: { balance_decision: d?.declineCode ?? (d?.approved ? "approved" : "unknown_card") } },
-      { status: 200, headers: { "Stripe-Version": event.api_version ?? "" } },
+      // Stripe rejects the answer (webhook_error) unless this names a valid API version.
+      { status: 200, headers: { "Stripe-Version": event.api_version || Stripe.API_VERSION } },
     );
   }
 
@@ -114,6 +115,7 @@ export async function POST(req: Request) {
         const auth = event.data.object as Stripe.Issuing.Authorization;
         const known = db.prepare(`SELECT id FROM authorization WHERE stripe_auth_id=?`).get(auth.id) as { id: string } | undefined;
         if (!known && !auth.approved) recordNetworkDecline(auth);
+        else if (known && !auth.approved) recordStripeOverride(known.id, auth);
         else if (known) enqueueAssessment(known.id);
         break;
       }
@@ -156,6 +158,23 @@ export async function POST(req: Request) {
   return NextResponse.json({ received: true });
 }
 
+/** When the purchase happened: the simulator's time override (set moments ago) or Stripe's timestamp. */
+function authTime(cardId: string, auth: Stripe.Issuing.Authorization) {
+  const o = getDb().prepare(`SELECT at FROM sim_override WHERE card_id=? AND created_at > ?`).get(cardId, new Date(Date.now() - 60_000).toISOString()) as
+    | { at: string }
+    | undefined;
+  return o?.at ?? new Date(auth.created * 1000).toISOString();
+}
+
+/** We approved, but Stripe still declined (e.g. our answer arrived too late): release the hold. */
+function recordStripeOverride(authId: string, auth: Stripe.Issuing.Authorization) {
+  if (!releaseAuthorization(authId, nowIso())) return;
+  const reason = auth.request_history?.at(-1)?.reason ?? "unknown";
+  getDb()
+    .prepare(`UPDATE authorization SET decision='declined', status='declined', decline_reason=? WHERE id=?`)
+    .run(`Declined by Stripe after our approval (${reason})`, authId);
+}
+
 /** Stripe declined before asking us (card-level spending controls). Record it so the treasurer sees the attempt. */
 function recordNetworkDecline(auth: Stripe.Issuing.Authorization) {
   const db = getDb();
@@ -182,7 +201,7 @@ function recordNetworkDecline(auth: Stripe.Issuing.Authorization) {
     mccInfo(mcc).group,
     auth.merchant_data.city ?? "",
     auth.merchant_data.country ?? "IE",
-    new Date(auth.created * 1000).toISOString(),
+    authTime(card.id, auth),
     "declined",
     `Declined by Stripe card controls (${reason})`,
     0,

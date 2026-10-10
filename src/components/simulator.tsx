@@ -49,7 +49,6 @@ export function Simulator({
   presets,
   mccs,
   today,
-  stripe,
 }: {
   cards: CardOpt[];
   initialCard?: string;
@@ -192,13 +191,11 @@ export function Simulator({
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-          {!stripe && (
-            <label className="flex items-center gap-2 text-sm text-ink-2">
-              <input type="checkbox" checked={useTime} onChange={(e) => setUseTime(e.target.checked)} className="h-4 w-4 accent-[var(--stone)]" />
-              Override time
-              {useTime && <input type="datetime-local" className="rounded-lg border border-line-strong bg-white px-2 py-1 text-sm" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Purchase time (Dublin)" />}
-            </label>
-          )}
+          <label className="flex items-center gap-2 text-sm text-ink-2">
+            <input type="checkbox" checked={useTime} onChange={(e) => setUseTime(e.target.checked)} className="h-4 w-4 accent-[var(--stone)]" />
+            Override time
+            {useTime && <input type="datetime-local" className="rounded-lg border border-line-strong bg-white px-2 py-1 text-sm" value={time} onChange={(e) => setTime(e.target.value)} aria-label="Purchase time (Dublin)" />}
+          </label>
           <label className="flex items-center gap-2 text-sm text-ink-2">
             <input type="checkbox" checked={capture} onChange={(e) => setCapture(e.target.checked)} className="h-4 w-4 accent-[var(--stone)]" />
             Merchant captures immediately

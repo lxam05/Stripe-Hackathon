@@ -1,6 +1,6 @@
 import { captureAuthorization, decideAuthorization, type Decision } from "./authorize";
 import { enqueueAssessment } from "./assess";
-import { getDb } from "./db";
+import { getDb, nowIso } from "./db";
 import { env } from "./env";
 import { mccInfo } from "./mcc";
 import { UserError } from "./errors";
@@ -57,45 +57,52 @@ export async function simulatePurchase(input: SimInput): Promise<Decision & { mo
   if (card.network === "stripe" && env.issuingMode === "stripe") {
     const info = mccInfo(input.mcc);
     if (!info.stripe) throw new UserError("invalid_mcc", `MCC ${input.mcc} isn't mapped to a Stripe category.`);
-    const auth = await getStripe().testHelpers.issuing.authorizations.create({
-      card: card.stripe_card_id!,
-      amount: input.amountCents,
-      currency: "eur",
-      merchant_data: {
-        name: merchantName,
-        category: info.stripe as never,
-        country: input.country.toUpperCase(),
-        city: input.city ?? "Dublin",
-      },
-    });
-    // Our webhook records the decision; wait briefly for it to land.
-    for (let i = 0; i < 30; i++) {
-      const row = getDb().prepare(`SELECT * FROM authorization WHERE stripe_auth_id=?`).get(auth.id) as
-        | { id: string; decision: string; decline_reason: string | null; rules_score: number; rule_signals: string; decision_ms: number }
-        | undefined;
-      if (row) {
-        if (input.autoCapture && row.decision === "approved") {
-          await getStripe().testHelpers.issuing.authorizations.capture(auth.id);
+    // Stripe stamps the authorisation with the real time; hand the override to our webhook.
+    const db = getDb();
+    if (input.at) db.prepare(`INSERT OR REPLACE INTO sim_override (card_id, at, created_at) VALUES (?,?,?)`).run(card.id, input.at, nowIso());
+    try {
+      const auth = await getStripe().testHelpers.issuing.authorizations.create({
+        card: card.stripe_card_id!,
+        amount: input.amountCents,
+        currency: "eur",
+        merchant_data: {
+          name: merchantName,
+          category: info.stripe as never,
+          country: input.country.toUpperCase(),
+          city: input.city ?? "Dublin",
+        },
+      });
+      // Our webhook records the decision; wait briefly for it to land.
+      for (let i = 0; i < 30; i++) {
+        const row = getDb().prepare(`SELECT * FROM authorization WHERE stripe_auth_id=?`).get(auth.id) as
+          | { id: string; decision: string; decline_reason: string | null; rules_score: number; rule_signals: string; decision_ms: number }
+          | undefined;
+        if (row) {
+          if (input.autoCapture && row.decision === "approved") {
+            await getStripe().testHelpers.issuing.authorizations.capture(auth.id);
+          }
+          return {
+            mode: "stripe",
+            authorizationId: row.id,
+            approved: row.decision === "approved",
+            declineReason: row.decline_reason,
+            declineCode: null,
+            score: row.rules_score,
+            signals: JSON.parse(row.rule_signals),
+            decisionMs: row.decision_ms,
+            captured: Boolean(input.autoCapture && row.decision === "approved"),
+          };
         }
-        return {
-          mode: "stripe",
-          authorizationId: row.id,
-          approved: row.decision === "approved",
-          declineReason: row.decline_reason,
-          declineCode: null,
-          score: row.rules_score,
-          signals: JSON.parse(row.rule_signals),
-          decisionMs: row.decision_ms,
-          captured: Boolean(input.autoCapture && row.decision === "approved"),
-        };
+        await new Promise((r) => setTimeout(r, 200));
       }
-      await new Promise((r) => setTimeout(r, 200));
+      throw new UserError(
+        "webhook_timeout",
+        `Stripe created ${auth.id} (${auth.approved ? "approved" : "declined"} by Stripe), but our webhook never saw it. Is \`npm run stripe:listen\` running, with its secret in STRIPE_WEBHOOK_SECRET?`,
+        504,
+      );
+    } finally {
+      if (input.at) db.prepare(`DELETE FROM sim_override WHERE card_id=?`).run(card.id);
     }
-    throw new UserError(
-      "webhook_timeout",
-      `Stripe created ${auth.id} (${auth.approved ? "approved" : "declined"} by Stripe), but our webhook never saw it. Is \`stripe listen --forward-to localhost:3000/api/webhooks/stripe\` running?`,
-      504,
-    );
   }
 
   const d = decideAuthorization({

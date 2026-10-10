@@ -187,6 +187,13 @@ CREATE TABLE IF NOT EXISTS mcc_policy (
   PRIMARY KEY (scope, scope_id, mcc)
 );
 
+-- Simulator time override for Stripe-mode test authorisations, read by the webhook.
+CREATE TABLE IF NOT EXISTS sim_override (
+  card_id TEXT PRIMARY KEY,
+  at TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS webhook_event (
   stripe_event_id TEXT PRIMARY KEY,
   type TEXT NOT NULL,

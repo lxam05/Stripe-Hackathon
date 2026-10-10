@@ -5,6 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 process.env.BALANCE_DB_PATH = "data/test.db";
+process.env.ISSUING_MODE = "mock"; // tests never touch the Stripe sandbox
 for (const f of ["data/test.db", "data/test.db-wal", "data/test.db-shm"]) fs.rmSync(f, { force: true });
 
 interface Result {

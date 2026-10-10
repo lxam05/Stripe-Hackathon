@@ -57,16 +57,34 @@ const mockNetwork: CardNetwork = {
   async setLimits() {},
 };
 
+// EU cards need a phone on the cardholder for 3-D Secure; members don't store one, so the
+// sandbox uses the UCD switchboard.
+const SANDBOX_CARDHOLDER_PHONE = "+35317167777";
+
+// The treasurer's caps are review thresholds (authorize.ts H5/H6): over-cap purchases go
+// through and get flagged, so they must not become hard Stripe limits. Stripe only enforces
+// the Societies Office ceiling; setting it also replaces Stripe's default 500 USD/day limit.
+const STRIPE_BACKSTOP_LIMITS = [{ amount: MAX_MONTHLY_LIMIT_CENTS, interval: "monthly" as const }];
+
 const stripeNetwork: CardNetwork = {
   name: "stripe",
+  // One cardholder per person: every card (new, replacement, reseeded) reuses it.
   async ensureCardholder(m) {
     if (m.stripe_cardholder_id && !m.stripe_cardholder_id.startsWith("mock_")) return m.stripe_cardholder_id;
+    const existing = (await getStripe().issuing.cardholders.list({ email: m.email, status: "active", limit: 10 })).data.find(
+      (c) => c.metadata?.member_id === m.id,
+    );
+    if (existing) {
+      if (!existing.phone_number) await getStripe().issuing.cardholders.update(existing.id, { phone_number: SANDBOX_CARDHOLDER_PHONE });
+      return existing.id;
+    }
     const [first, ...rest] = m.name.replace(/\s*\(demo\)\s*/i, "").split(" ");
     const ch = await getStripe().issuing.cardholders.create({
       type: "individual",
       name: m.name.replace(/\s*\(demo\)\s*/i, ""),
       email: m.email,
-      billing: { address: { line1: "UCD Student Centre, Belfield", city: "Dublin", postal_code: "D04 V1W8", country: "IE" } },
+      phone_number: SANDBOX_CARDHOLDER_PHONE,
+      billing: { address: { line1: "UCD Student Centre, Belfield", city: "Dublin", state: "Co. Dublin", postal_code: "D04 V1W8", country: "IE" } },
       individual: {
         first_name: first,
         last_name: rest.join(" ") || "Member",
@@ -87,6 +105,7 @@ const stripeNetwork: CardNetwork = {
       status: "active",
       spending_controls: {
         blocked_categories: blocked,
+        spending_limits: STRIPE_BACKSTOP_LIMITS,
       },
       metadata: { society_id: p.societyId, member_id: p.memberId, role: p.role, balance_env: "sandbox" },
     });
@@ -98,13 +117,81 @@ const stripeNetwork: CardNetwork = {
   },
   async setLimits(stripeCardId) {
     if (!stripeCardId) return;
+    // Thresholds live in our DB; this just moves legacy cards off old hard limits onto the backstop.
     await getStripe().issuing.cards.update(stripeCardId, {
-      spending_controls: { spending_limits: [] },
+      spending_controls: { spending_limits: STRIPE_BACKSTOP_LIMITS },
     });
   },
 };
 
 export const cardNetwork = (): CardNetwork => (env.issuingMode === "stripe" ? stripeNetwork : mockNetwork);
+
+const ISSUING_FLOAT_CENTS = 2_000_000;
+
+/**
+ * Seeded cards are written as mock rows; in Stripe mode give each one a real sandbox card
+ * (reusing the officer's cardholder), cancel cards left over from earlier seeds, and keep the
+ * sandbox Issuing balance funded so demo purchases aren't declined for insufficient funds.
+ * Failures are logged and leave the card on the mock network rather than failing the seed.
+ */
+export async function syncSeededCardsToStripe(log: (s: string) => void = () => {}) {
+  if (env.issuingMode !== "stripe") return;
+  const db = getDb();
+  const s = getStripe();
+  try {
+    const bal = await s.balance.retrieve();
+    const eur = bal.issuing?.available.find((b) => b.currency === "eur")?.amount ?? 0;
+    if (eur < ISSUING_FLOAT_CENTS) {
+      await s.rawRequest("POST", "/v1/test_helpers/issuing/fund_balance", { amount: 5_000_000, currency: "eur" });
+      log(`funded sandbox Issuing balance (was ${fmtEur(eur)})`);
+    }
+  } catch (err) {
+    log(`could not fund Issuing balance: ${err instanceof Error ? err.message : err}`);
+  }
+
+  const known = new Set(
+    (db.prepare(`SELECT stripe_card_id FROM card WHERE network='stripe' AND stripe_card_id IS NOT NULL`).all() as { stripe_card_id: string }[]).map(
+      (r) => r.stripe_card_id,
+    ),
+  );
+  const stale: string[] = [];
+  for (const status of ["active", "inactive"] as const) {
+    for await (const c of s.issuing.cards.list({ status, limit: 100 })) {
+      if (c.metadata?.balance_env === "sandbox" && !known.has(c.id)) stale.push(c.id);
+    }
+  }
+  await inBatches(stale, (id) => s.issuing.cards.update(id, { status: "canceled" }).then(() => undefined));
+  if (stale.length) log(`cancelled ${stale.length} Stripe cards from earlier seeds`);
+
+  const rows = db
+    .prepare(`SELECT id, society_id, member_id, status, per_auth_cap_cents, monthly_limit_cents FROM card WHERE network='mock' AND status != 'canceled'`)
+    .all() as (Pick<CardRecord, "id" | "society_id" | "member_id" | "status" | "per_auth_cap_cents" | "monthly_limit_cents">)[];
+  let issued = 0;
+  await inBatches(rows, async (row) => {
+    try {
+      const member = db.prepare(`SELECT * FROM member WHERE id=?`).get(row.member_id) as MemberRow;
+      const chId = await stripeNetwork.ensureCardholder(member);
+      db.prepare(`UPDATE member SET stripe_cardholder_id=?, cardholder_created_at=COALESCE(cardholder_created_at, ?) WHERE id=?`).run(chId, nowIso(), member.id);
+      const c = await stripeNetwork.createCard(chId, {
+        memberId: member.id,
+        role: member.role,
+        societyId: row.society_id,
+        perAuthCapCents: row.per_auth_cap_cents,
+        monthlyLimitCents: row.monthly_limit_cents,
+      });
+      if (row.status === "inactive") await stripeNetwork.setStatus(c.id, "inactive");
+      db.prepare(`UPDATE card SET network='stripe', stripe_card_id=?, last4=?, exp_month=?, exp_year=? WHERE id=?`).run(c.id, c.last4, c.expMonth, c.expYear, row.id);
+      issued++;
+    } catch (err) {
+      log(`card ${row.id} stays simulated: ${err instanceof Error ? err.message : err}`);
+    }
+  });
+  log(`issued ${issued}/${rows.length} seeded cards on Stripe Issuing`);
+}
+
+async function inBatches<T>(items: T[], fn: (item: T) => Promise<void>, size = 5) {
+  for (let i = 0; i < items.length; i += size) await Promise.all(items.slice(i, i + size).map(fn));
+}
 
 interface CardRecord {
   id: string;
