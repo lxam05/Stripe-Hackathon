@@ -1,0 +1,223 @@
+{
+  "ran_at": "2026-10-10T10:19:49.752Z",
+  "passed": 27,
+  "total": 27,
+  "results": [
+    {
+      "id": "O2",
+      "kind": "Ordinary",
+      "name": "Sponsor tops up €250",
+      "expected": "Ledger +€250 once",
+      "actual": "+€250",
+      "pass": true
+    },
+    {
+      "id": "F4",
+      "kind": "Failure",
+      "name": "Duplicate fulfilment / webhook replay",
+      "expected": "Processed once",
+      "actual": "1 ledger entry",
+      "pass": true
+    },
+    {
+      "id": "F5",
+      "kind": "Failure",
+      "name": "Checkout cancelled",
+      "expected": "No ledger entry",
+      "actual": "0 entries",
+      "pass": true
+    },
+    {
+      "id": "B5",
+      "kind": "Boundary",
+      "name": "Top-up €5 / €10,000 / €4.99 / €10,000.01",
+      "expected": "accepted, accepted, rejected, rejected",
+      "actual": "accepted, accepted, rejected, rejected",
+      "pass": true
+    },
+    {
+      "id": "O1",
+      "kind": "Ordinary",
+      "name": "€184 at Domino's on Pizza Night",
+      "expected": "Approved, rules < 40, no flag",
+      "actual": "approved, score 0, no flag",
+      "pass": true
+    },
+    {
+      "id": "O3",
+      "kind": "Ordinary",
+      "name": "Printing €14 (MCC 2741) for Drama",
+      "expected": "Approved, low",
+      "actual": "approved, score 0",
+      "pass": true
+    },
+    {
+      "id": "B7",
+      "kind": "Boundary",
+      "name": "€0.01 merchant card check",
+      "expected": "Approved, never flagged",
+      "actual": "approved, no flag",
+      "pass": true
+    },
+    {
+      "id": "F6",
+      "kind": "Failure",
+      "name": "Gambling MCC 7995",
+      "expected": "Declined (H4) + flagged",
+      "actual": "blocked_mcc, flag high",
+      "pass": true
+    },
+    {
+      "id": "F7",
+      "kind": "Failure",
+      "name": "Injection text as merchant name on an odd purchase",
+      "expected": "Still flagged; descriptor delimited as untrusted data",
+      "actual": "flag medium, delimited true",
+      "pass": true
+    },
+    {
+      "id": "B3",
+      "kind": "Boundary",
+      "name": "Amount exactly at the per-purchase cap",
+      "expected": "Approved; R4 fires",
+      "actual": "approved, R4 true",
+      "pass": true
+    },
+    {
+      "id": "B3b",
+      "kind": "Boundary",
+      "name": "Cap + €0.01",
+      "expected": "Declined by card spending control",
+      "actual": "spending_controls",
+      "pass": true
+    },
+    {
+      "id": "B2",
+      "kind": "Boundary",
+      "name": "Remaining budget + €0.01",
+      "expected": "Declined (H3)",
+      "actual": "insufficient_budget",
+      "pass": true
+    },
+    {
+      "id": "B1",
+      "kind": "Boundary",
+      "name": "Amount exactly equal to remaining budget",
+      "expected": "Approved; remaining → €0.00",
+      "actual": "approved, remaining €0.00",
+      "pass": true
+    },
+    {
+      "id": "B6",
+      "kind": "Boundary",
+      "name": "End + 3 days 23:59 vs end + 4 days",
+      "expected": "Approved vs declined (H2)",
+      "actual": "approved vs outside_event_window",
+      "pass": true
+    },
+    {
+      "id": "B4",
+      "kind": "Boundary",
+      "name": "Society with < 5 purchases in a category (cold start)",
+      "expected": "R3 falls back to the global baseline",
+      "actual": "society n=0, R3 not fired (within global norm)",
+      "pass": true
+    },
+    {
+      "id": "F8",
+      "kind": "Failure",
+      "name": "Purchase on a frozen card",
+      "expected": "Declined (H1)",
+      "actual": "card_inactive",
+      "pass": true
+    },
+    {
+      "id": "F9",
+      "kind": "Failure",
+      "name": "Two concurrent €60 auths on a €100 budget",
+      "expected": "One approved, one declined",
+      "actual": "1 approved",
+      "pass": true
+    },
+    {
+      "id": "F1",
+      "kind": "Failure",
+      "name": "OpenRouter error / timeout",
+      "expected": "Rules-only result marked AI unavailable; auth unaffected",
+      "actual": "approved, rules_fallback: AI unavailable: 401 Missing Authentication header",
+      "pass": true
+    },
+    {
+      "id": "J1",
+      "kind": "Failure",
+      "name": "JEV high + rules ≥ 40 (stubbed OpenRouter)",
+      "expected": "Assessment stored, card auto-frozen, high flag",
+      "actual": "jev/high, card inactive, flag high",
+      "pass": true
+    },
+    {
+      "id": "J2",
+      "kind": "Failure",
+      "name": "Hallucinated evidence in a JEV flag",
+      "expected": "Flag citing €999 (not in input) marked unverified",
+      "actual": "verified: true, false",
+      "pass": true
+    },
+    {
+      "id": "J3",
+      "kind": "Failure",
+      "name": "Privacy & request shape sent to OpenRouter",
+      "expected": "No member names/emails; schema + data_collection=deny",
+      "actual": "names absent, schema true, provider {\"data_collection\":\"deny\"}",
+      "pass": true
+    },
+    {
+      "id": "F2b",
+      "kind": "Failure",
+      "name": "JEV returns non-JSON twice (stubbed)",
+      "expected": "One retry, then rules fallback",
+      "actual": "2 calls, rules_fallback: AI unavailable: invalid JSON after retry",
+      "pass": true
+    },
+    {
+      "id": "F2",
+      "kind": "Failure",
+      "name": "JEV returns invalid JSON / out-of-schema values",
+      "expected": "Rejected by Zod → retry → fallback",
+      "actual": "rejected (5 issues)",
+      "pass": true
+    },
+    {
+      "id": "F3",
+      "kind": "Failure",
+      "name": "Webhook with a bad signature",
+      "expected": "400, nothing written",
+      "actual": "400, 0 entries written",
+      "pass": true
+    },
+    {
+      "id": "F4b",
+      "kind": "Failure",
+      "name": "Signed checkout webhook delivered twice",
+      "expected": "200 both times, credited once",
+      "actual": "200/200, 1 credit, duplicate=true",
+      "pass": true
+    },
+    {
+      "id": "F10",
+      "kind": "Failure",
+      "name": "Stripe API error creating the card",
+      "expected": "Event saved, card pending with a clear error",
+      "actual": "event saved, card pending: Invalid API Key provided: sk_test_****************",
+      "pass": true
+    },
+    {
+      "id": "L1",
+      "kind": "Invariant",
+      "name": "Ledger reconciles for all societies",
+      "expected": "available ≥ 0 and held = Σ pending holds",
+      "actual": "Drama Society ok, Robotics Society ok, Law Society ok, Hillwalking Club ok, E-Sports Society ok",
+      "pass": true
+    }
+  ]
+}

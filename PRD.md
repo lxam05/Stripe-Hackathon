@@ -1,6 +1,6 @@
-# PRD — Kitty: virtual cards & budgets for UCD societies
+# PRD — Balance: virtual cards & budgets for UCD societies
 
-> **Working name:** Kitty (as in "the society kitty", the shared pot of money). Placeholder, rename freely.
+> **Product name:** Balance (formerly the working name "Balance"). Every euro kept in balance: budgets, ledger and risk.
 > **Event:** HackUCD 2026 · **Primary theme:** FinTech & Quantitative Analysis (payment workflows + fraud and risk) · **Crossover:** Everyday Frustrations ("your society's spreadsheet chaos")
 > **Status:** Draft v1 · 2026-10-10
 > **Core stack:** Stripe Issuing (virtual cards, real-time authorisation), Stripe Checkout (sponsor top-ups + subscription bonus), OpenRouter (JEV risk agent)
@@ -9,7 +9,7 @@
 
 ## 0. TL;DR
 
-UCD society committees spend money on events (pizza, room hire, printing, travel, tickets) through a mix of personal cards, reimbursement forms, one shared debit card held by the treasurer, and a spreadsheet nobody trusts. Kitty gives each event its own **Stripe Issuing virtual card**, with a budget and merchant-category rules attached. Every purchase is checked twice:
+UCD society committees spend money on events (pizza, room hire, printing, travel, tickets) through a mix of personal cards, reimbursement forms, one shared debit card held by the treasurer, and a spreadsheet nobody trusts. Balance gives each event its own **Stripe Issuing virtual card**, with a budget and merchant-category rules attached. Every purchase is checked twice:
 
 1. **In real time, by deterministic rules** (budget, blocked merchant categories, event dates, velocity), inside Stripe's authorisation window.
 2. **Straight after, by JEV**, an LLM risk agent called through **OpenRouter**. JEV compares the purchase with the society's past spending, the purchaser's history, the merchant category (MCC) and the event's context. It writes a plain-English risk explanation, flags anything odd for the treasurer, and can recommend freezing the card.
@@ -23,7 +23,7 @@ Sponsor tops up €250 → treasurer creates "Pizza Night" with a €300 budget 
 
 ## 1. Hackathon brief → how this PRD answers it
 
-| Brief requirement / criterion | How Kitty answers it | Where |
+| Brief requirement / criterion | How Balance answers it | Where |
 |---|---|---|
 | **Know your first users** (who, problem, workaround, why switch, how to reach, evidence vs assumptions) | Society treasurers and event officers at UCD; assumptions table with evidence status; interview plan for the first hour | §2, §3 |
 | **Working prototype: one workflow** | Top-up → event card → purchase → risk check → review, running locally against the Stripe sandbox | §6, §13 |
@@ -61,7 +61,7 @@ Society committees are volunteer students who rotate every year. They have to sp
 
 ### 3.1 Personas
 
-| Persona | Who | Jobs to be done | Pain today | What Kitty gives them |
+| Persona | Who | Jobs to be done | Pain today | What Balance gives them |
 |---|---|---|---|---|
 | **Treasurer (primary)** | Elected society treasurer; part-time volunteer; personally accountable at audit | Keep the society solvent, approve spend, reconcile, report to the Societies Office | Chasing receipts, reconciling spreadsheets, finding problems late | Live ledger per event, cards with built-in limits, a review queue with explanations instead of raw data |
 | **Event officer / committee member (cardholder)** | Runs a specific event | Pay for the event *now* without using their own money | Fronting costs, waiting for reimbursement | Their own virtual card for that event; no personal money involved |
@@ -118,7 +118,7 @@ Physical cards; real money or production KYC/KYB; multi-currency; Stripe dispute
 | Recall on seeded anomalies (combined system) | ≥ 85% | — |
 | False-positive flags per society per month (synthetic) | ≤ 2 | ≤ 2 (measured on real data) |
 | Ledger reconciliation errors | 0 | 0 |
-| Reimbursement claims replaced | — | ≥ 70% of event spend on Kitty cards |
+| Reimbursement claims replaced | — | ≥ 70% of event spend on Balance cards |
 | Median time for treasurer to resolve a flag | — | < 48 h |
 
 ---
@@ -129,7 +129,7 @@ Physical cards; real money or production KYC/KYB; multi-currency; Stripe dispute
 - **M1** Seeded demo data: societies, members, events, ~12 months of labelled synthetic purchase history (§10).
 - **M2** Society ledger (integer cents, append-only entries) with available / held / spent balances.
 - **M3** Sponsor/UCD **top-up page** → Stripe Checkout (`mode=payment`, EUR) → `checkout.session.completed` webhook → ledger credit (idempotent) → success page showing the credited amount.
-- **M4** Treasurer creates an **event** with a budget and dates → Kitty creates a **Stripe Issuing cardholder** (if needed) and a **virtual card** with spending controls (all-time limit = event budget, per-authorisation cap, blocked categories) and metadata (`society_id`, `event_id`).
+- **M4** Treasurer creates an **event** with a budget and dates → Balance creates a **Stripe Issuing cardholder** (if needed) and a **virtual card** with spending controls (all-time limit = event budget, per-authorisation cap, blocked categories) and metadata (`society_id`, `event_id`).
 - **M5** **Real-time authorisation webhook** (`issuing_authorization.request`): card/event lookup → budget check → hard rules → rules risk score → approve/decline within the time budget → ledger hold.
 - **M6** **JEV async risk analysis** via OpenRouter on every authorisation: structured JSON output, explanation, flags, recommended action; stored as a `RiskAssessment`.
 - **M7** **Transactions feed** with risk badges and a **risk detail panel** (rule signals + JEV explanation + comparable past purchases).
@@ -178,13 +178,13 @@ Real auth/SSO, physical cards, Connect-based per-society legal accounts, dispute
    - `type: virtual`, `currency: eur`, `status: active`
    - `spending_controls.spending_limits`: `[{amount: budget, interval: all_time}, {amount: per_auth_cap, interval: per_authorization}]`
    - `spending_controls.blocked_categories`: global blocklist (§7.2)
-   - `metadata`: `society_id`, `event_id`, `kitty_env=sandbox`
+   - `metadata`: `society_id`, `event_id`, `balance_env=sandbox`
 4. Event page shows the card (last4, expiry, status), budget bar (spent / held / remaining) and transactions.
 5. When the event ends + grace period (default 3 days), the card is set to `inactive` automatically (or by a manual "Close event" action) and any unspent budget returns to the society's unallocated pool.
 
 ### 6.3 Purchase → real-time decision → async JEV (M5, M6)
 ```
-Merchant ──auth──▶ Stripe Issuing ──issuing_authorization.request──▶ Kitty /webhooks/stripe
+Merchant ──auth──▶ Stripe Issuing ──issuing_authorization.request──▶ Balance /webhooks/stripe
                                                                      │
                                          ┌───────────────────────────┤ sync path (≤ ~1 s budget)
                                          │ 1 resolve card → event → society
@@ -266,7 +266,7 @@ DB lookups and stats must be precomputed or indexed: keep a `society_mcc_stats` 
 
 ## 8. JEV: AI risk agent via OpenRouter
 
-> **JEV** is the name of Kitty's risk-analysis agent. It runs on a model served through OpenRouter, configurable with `JEV_MODEL`. *(If "JEV" refers to a specific model, set it here.)*
+> **JEV** is the name of Balance's risk-analysis agent. It runs on a model served through OpenRouter, configurable with `JEV_MODEL`. *(If "JEV" refers to a specific model, set it here.)*
 
 ### 8.1 Why an LLM (vs only rules)
 - **Context and semantics:** rules know "MCC 5732 is unusual". JEV can reason that "an electronics purchase for a *Robotics* society's hardware workshop is expected, but the same purchase on a *Drama* society's Pizza Night card isn't." It reads event names, types, notes and merchant names.
@@ -393,7 +393,7 @@ All handlers: **idempotent** (store processed `event.id`), return 2xx quickly, n
 Local dev: `stripe listen --forward-to localhost:3000/api/webhooks/stripe`.
 
 ### 9.3 Money model (important; explain this to judges)
-Stripe Issuing has **one Issuing balance per Stripe account** (the platform, i.e. UCD/Kitty). **Per-society budgets are an internal ledger** that Kitty enforces at authorisation time. That's why the sync webhook matters: it's where "society budget" becomes real.
+Stripe Issuing has **one Issuing balance per Stripe account** (the platform, i.e. UCD/Balance). **Per-society budgets are an internal ledger** that Balance enforces at authorisation time. That's why the sync webhook matters: it's where "society budget" becomes real.
 
 - **Sandbox:** fund the Issuing balance once with test funds (Dashboard or test helper; confirm at hour 0). Checkout top-ups credit the society's ledger.
 - **Production (out of scope):** Checkout funds land in the payments balance. Moving them to the Issuing balance needs a funding flow (balance transfer/top-up as supported in the region), or a model where the Societies Office pre-funds the Issuing balance and top-ups reimburse it. The platform account holder would be the SU/UCD entity (KYB). Alternative: Stripe Connect with a connected account per society, rejected for now as too heavy for a hackathon and because most societies aren't separate legal entities (assumption).
@@ -406,7 +406,7 @@ The bonus asks for a way to **"buy or subscribe to your tool"**, with a pricing 
 
 | Option | Model | Price (test) | Customer gets | Why it suits |
 |---|---|---|---|---|
-| **A: Society Plan (bonus-safe, S3)** | Yearly subscription via Checkout `mode=subscription` | **€49 / year per society** | Kitty access for the academic year: up to 10 active event cards, JEV risk analysis, sponsor top-up page | Societies run on the academic year and committees change every September; one annual decision fits the treasurer handover |
+| **A: Society Plan (bonus-safe, S3)** | Yearly subscription via Checkout `mode=subscription` | **€49 / year per society** | Balance access for the academic year: up to 10 active event cards, JEV risk analysis, sponsor top-up page | Societies run on the academic year and committees change every September; one annual decision fits the treasurer handover |
 | **B: Sponsor top-up (core, M3)** | One-time payment via Checkout `mode=payment` | Sponsor chooses (€5–€10,000) | Funds credited to the society budget; (Could) transparency report | Matches how sponsorship already works |
 
 **Recognising the purchase in-product:** A, `checkout.session.completed` + `invoice.paid` → `Society.plan = active`, `plan_renews_at` set → card issuing unlocked (show a locked "Subscribe to issue cards" state before). B, ledger credit + "Recent top-ups" list + success page.
@@ -620,7 +620,7 @@ Guard: the app **refuses to start with a live key**. The brief says sandbox only
 ---
 
 ## 15. Go-to-market (credible path to first users)
-- **Champion:** UCD Societies Council / Societies Office. They already set finance rules and run treasurer training; Kitty enforces those rules at the card.
+- **Champion:** UCD Societies Council / Societies Office. They already set finance rules and run treasurer training; Balance enforces those rules at the card.
 - **Moment:** September treasurer training and handover, when committees are new and set up their tools for the year.
 - **Pilot:** 3 societies for one semester, with the Societies Office as program owner of the Issuing account.
 - **Channels:** treasurer training sessions, Societies Council meetings, the treasurer group chat, Freshers' Week society fair (QR codes for sponsor top-ups).
@@ -651,5 +651,5 @@ Guard: the app **refuses to start with a live key**. The brief says sandbox only
 - **Capture:** the merchant finalising the charge; hold becomes spend.
 - **Spending controls:** Stripe Issuing card-level limits and allowed/blocked categories.
 - **Issuing balance:** the Stripe balance that card spend draws from.
-- **JEV:** Kitty's AI risk-analysis agent, run via OpenRouter.
+- **JEV:** Balance's AI risk-analysis agent, run via OpenRouter.
 - **Hard negative:** an unusual-but-legitimate purchase in the eval set, used to measure false positives.
