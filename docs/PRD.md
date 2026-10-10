@@ -17,7 +17,7 @@ UCD society committees spend money on events (pizza, room hire, printing, travel
 **Sponsors and UCD** add money to a society's budget through a **Stripe Checkout** payment page. The money shows up in the society's ledger as soon as payment is confirmed.
 
 **The one workflow we must demo end to end:**
-Sponsor tops up €250 → treasurer creates "Pizza Night" with a €300 budget → event card issued → normal purchase approved (low risk) → odd purchase flagged by JEV with an explanation → card frozen → treasurer resolves the flag.
+Sponsor tops up €250 → treasurer creates "Pizza Night" with a €300 budget and points the events officer's card at it → normal purchase approved (low risk) → odd purchase flagged by JEV with an explanation → card frozen → treasurer resolves the flag.
 
 ---
 
@@ -26,7 +26,7 @@ Sponsor tops up €250 → treasurer creates "Pizza Night" with a €300 budget 
 | Brief requirement / criterion | How Balance answers it | Where |
 |---|---|---|
 | **Know your first users** (who, problem, workaround, why switch, how to reach, evidence vs assumptions) | Society treasurers and event officers at UCD; assumptions table with evidence status; interview plan for the first hour | §2, §3 |
-| **Working prototype: one workflow** | Top-up → event card → purchase → risk check → review, running locally against the Stripe sandbox | §6, §13 |
+| **Working prototype: one workflow** | Top-up → event budget → officer card purchase → risk check → review, running locally against the Stripe sandbox | §6, §13 |
 | **Use OpenRouter meaningfully** | JEV: structured-output risk analysis with explanations, evaluated against a labelled synthetic dataset and compared with a rules-only baseline | §8, §11 |
 | **Test and learn** | Assumption tests; ordinary/boundary/failure test matrix; rules vs JEV vs combined experiment | §11 |
 | **Suitable data** | Labelled synthetic transaction set built on the public MCC taxonomy; sources and assumptions stated | §10 |
@@ -83,7 +83,7 @@ Be honest with judges about this split. Fill in the *Evidence* column during the
 | A2 | Treasurers spend hours each month reconciling spend with events | **Assumption** | Ask treasurers for a time estimate; ask to see (redacted) spreadsheet structure | _tbd_ |
 | A3 | Treasurers would trust an AI flag only if it explains *why* | **Assumption** | Show two mock flags (score only vs score + explanation); ask which they would act on | _tbd_ |
 | A4 | Sponsors want visibility of how funds were spent | **Assumption** | Ask the sponsor reps present at HackUCD (e.g. the Stripe team) | _tbd_ |
-| A5 | Per-event cards (vs per-person cards) match how societies budget | **Assumption** | Ask: "Do you budget per event or per term?" | _tbd_ |
+| A5 | Five officer cards per society, each pointed at an event budget, match how committees spend | **Assumption** | Ask: "Do you budget per event or per term?" | _tbd_ |
 | A6 | Some MCCs (gambling, cash-like) are never legitimate; alcohol depends on society policy | **Partly public** (MCC taxonomy is public; SU alcohol policy unverified) | Check SU / Societies Council finance guidelines if available; otherwise treat as configurable | _tbd_ |
 | A7 | Most societies have too little history for pure statistical anomaly detection | **Assumption** (cold start) | Ask how many transactions a typical society makes per year; test JEV on a society with <10 transactions | _tbd_ |
 
@@ -368,7 +368,7 @@ Auto-freeze needs **both** layers to agree. This limits the cost of a false posi
 | Stripe object | Use |
 |---|---|
 | `issuing.cardholder` (type `individual`) | One per committee member who holds a card. EU cardholders need name, billing address, terms acceptance and email/phone for 3DS. **Hour-0: confirm required fields in sandbox.** |
-| `issuing.card` (type `virtual`) | One per event (MVP). `spending_controls` + `metadata` (`society_id`, `event_id`) |
+| `issuing.card` (type `virtual`) | Up to 5 per society, one per officer. `spending_controls` (per-authorization + monthly limits, blocked categories) + `metadata` (`society_id`, `member_id`, `role`). The event a card spends for lives in Balance, so reassigning a card needs no Stripe call |
 | `issuing.authorization` | Real-time decisions; holds |
 | `issuing.transaction` | Captures/refunds → spend |
 | Test helpers: `test_helpers.issuing.authorizations.create / capture / reverse / expire` | Purchase simulator (M9) |
@@ -406,7 +406,7 @@ The bonus asks for a way to **"buy or subscribe to your tool"**, with a pricing 
 
 | Option | Model | Price (test) | Customer gets | Why it suits |
 |---|---|---|---|---|
-| **A: Society Plan (bonus-safe, S3)** | Yearly subscription via Checkout `mode=subscription` | **€49 / year per society** | Balance access for the academic year: up to 10 active event cards, JEV risk analysis, sponsor top-up page | Societies run on the academic year and committees change every September; one annual decision fits the treasurer handover |
+| **A: Society Plan (bonus-safe, S3)** | Yearly subscription via Checkout `mode=subscription` | **€49 / year per society** | Balance access for the academic year: 5 virtual officer cards, JEV risk analysis, sponsor top-up page | Societies run on the academic year and committees change every September; one annual decision fits the treasurer handover |
 | **B: Sponsor top-up (core, M3)** | One-time payment via Checkout `mode=payment` | Sponsor chooses (€5–€10,000) | Funds credited to the society budget; (Could) transparency report | Matches how sponsorship already works |
 
 **Recognising the purchase in-product:** A, `checkout.session.completed` + `invoice.paid` → `Society.plan = active`, `plan_renews_at` set → card issuing unlocked (show a locked "Subscribe to issue cards" state before). B, ledger credit + "Recent top-ups" list + success page.
@@ -445,7 +445,7 @@ The bonus asks for a way to **"buy or subscribe to your tool"**, with a pricing 
 ## 11. Testing and learning
 
 ### 11.1 Assumption tests (Users first / Stay curious)
-- **Interviews (hour 0–1):** 5+ society committee members at HackUCD; 5-minute script (current workaround, last reimbursement wait, how they track spend, reaction to per-event cards, which mock flag they'd trust).
+- **Interviews (hour 0–1):** 5+ society committee members at HackUCD; 5-minute script (current workaround, last reimbursement wait, how they track spend, reaction to five officer cards pointed at event budgets, which mock flag they'd trust).
 - **Flag trust A/B (A3):** show a "score only" flag vs a "JEV explanation" flag; record which they'd act on and why.
 - **Report back what changed**, e.g. "Treasurers said per-term budgets matter more than per-event → we added an unallocated society pool."
 

@@ -27,7 +27,7 @@ export function ReviewActions({
   const [done, setDone] = useState<string | null>(null);
 
   const resolve = (resolution: "legit" | "receipt_requested" | "fraud") => {
-    if (resolution === "fraud" && !window.confirm("Mark as misuse? This cancels the card immediately. You can issue a replacement from the event page.")) return;
+    if (resolution === "fraud" && !window.confirm("Mark as misuse? This cancels the card immediately. You can issue a replacement on the Officer cards page.")) return;
     setBusy(resolution);
     setError(null);
     start(async () => {

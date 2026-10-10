@@ -53,9 +53,15 @@ export default async function TransactionPage({ params }: PageProps<"/transactio
         <Link href="/transactions" className={button("ghost", "-ml-3")}>
           <ArrowLeft className="h-4 w-4" /> Transactions
         </Link>
-        <Link href={`/events/${t.event_id}`} className="text-sm text-ink-3 hover:text-ink">
-          {t.event_name} →
-        </Link>
+        {t.event_id ? (
+          <Link href={`/events/${t.event_id}`} className="text-sm text-ink-3 hover:text-ink">
+            {t.event_name} →
+          </Link>
+        ) : (
+          <Link href="/cards" className="text-sm text-ink-3 hover:text-ink">
+            {t.event_name} →
+          </Link>
+        )}
       </div>
 
       <header className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-center">
@@ -69,7 +75,7 @@ export default async function TransactionPage({ params }: PageProps<"/transactio
           </p>
           <h1 className="display break-words text-4xl leading-tight sm:text-5xl">{prettyMerchant(t.merchant_name)}</h1>
           <p className="mt-1 text-sm text-ink-2">
-            {fmtDateTime(t.created_at)} · {t.member_name} · {t.event_name}
+            {fmtDateTime(t.created_at)} · {t.member_name}&rsquo;s card ••{t.card_last4} · {t.event_name}
           </p>
         </div>
         <div className="text-left sm:text-right">

@@ -22,9 +22,9 @@ async function main() {
   const { env } = await import("../src/lib/env");
   const { decideAuthorization, captureAuthorization } = await import("../src/lib/authorize");
   const { assessAuthorization } = await import("../src/lib/assess");
-  const { createEventWithCard } = await import("../src/lib/events");
-  const { setCardStatus } = await import("../src/lib/cards");
-  const { eventRemaining, reconcileAll, societyBalances } = await import("../src/lib/ledger");
+  const { createEvent } = await import("../src/lib/events");
+  const { assignCard, createOfficerCard, setCardStatus, updateCardLimits } = await import("../src/lib/cards");
+  const { committedToOpenEvents, eventRemaining, reconcileAll, societyBalances } = await import("../src/lib/ledger");
   const { activatePlan, createTopUpCheckout, fulfilTopUp, cancelTopUp, validateTopUpAmount, UserError } = await import("../src/lib/payments");
   const { JevOutput, buildContext } = await import("../src/lib/jev");
   const { dublinToIso, addDays } = await import("../src/lib/money");
@@ -45,8 +45,9 @@ async function main() {
     authId ? (db.prepare(`SELECT severity, status FROM flag WHERE authorization_id=?`).get(authId) as { severity: string } | undefined) : undefined;
   const has = (signals: { id: string }[], id: string) => signals.some((s) => s.id === id);
 
-  // ── Setup: Drama renews the plan, gets a €250 sponsor top-up, creates Pizza Night ──
-  activatePlan("soc_drama", { customerId: null, subscriptionId: null, renewsAt: null, source: "test" });
+  // ── Setup: Drama renews the plan (its 5 officer cards wake up), gets a €250 sponsor
+  // top-up and creates Pizza Night with Cian's events-officer card on it ──
+  await activatePlan("soc_drama", { customerId: null, subscriptionId: null, renewsAt: null, source: "test" });
   const today = new Date().toISOString().slice(0, 10);
   const eventDate = addDays(today, 4);
 
@@ -78,11 +79,11 @@ async function main() {
   const b5 = [500, 1_000_000, 499, 1_000_001].map(limit);
   check("B5", "Boundary", "Top-up €5 / €10,000 / €4.99 / €10,000.01", "accepted, accepted, rejected, rejected", b5.join(", "), b5.join() === "accepted,accepted,rejected,rejected");
 
-  const ev = await createEventWithCard(
-    { societyId: "soc_drama", name: "Pizza Night", type: "social", startDate: eventDate, endDate: eventDate, expectedAttendees: 80, budgetCents: 30000, perAuthCapCents: 25000, cardholderId: "mem_drama_2" },
-    "test",
-  );
-  const card = ev.cardId;
+  // Officer cards: card_drama_1 Aoife (treasurer), _2 Cian (events officer), _3 Saoirse, _4 Darragh, _5 Orla.
+  const awake = (db.prepare(`SELECT COUNT(*) n FROM card WHERE society_id='soc_drama' AND status='active'`).get() as { n: number }).n;
+  check("O4", "Ordinary", "Plan renewed: lapsed officer cards wake up", "5 of 5 cards active", `${awake} of 5 active`, awake === 5);
+  const card = "card_drama_2";
+  createEvent({ societyId: "soc_drama", name: "Pizza Night", type: "social", startDate: eventDate, endDate: eventDate, expectedAttendees: 80, budgetCents: 30000, cardIds: [card] }, "test");
   const at = (time: string, date = eventDate) => dublinToIso(addDays(date, -1), time);
 
   // O1: ordinary pizza order.
@@ -123,40 +124,59 @@ async function main() {
   const co4 = await createTopUpCheckout({ societySlug: "drama", amountCents: 100000, payerName: "UCD Societies Council" });
   fulfilTopUp((db.prepare(`SELECT checkout_session_id s FROM topup WHERE id=?`).get(co4.topupId) as { s: string }).s, "test");
 
-  // B3: exactly at the per-auth cap (on a fresh event so the budget allows it).
-  const capEv = await createEventWithCard(
-    { societyId: "soc_drama", name: "Cap test", type: "other", startDate: eventDate, endDate: eventDate, expectedAttendees: 10, budgetCents: 10000, perAuthCapCents: 5000, cardholderId: "mem_drama_3" },
-    "test",
-  );
-  const b3 = decideAuthorization({ cardId: capEv.cardId, amountCents: 5000, merchantName: "COSTUME WORKSHOP DUBLIN", mcc: "5699", merchantCountry: "IE", at: at("14:00") });
+  // G1 / G2: an unassigned card spends from unallocated money only (available minus open events' reserves).
+  const aoife = "card_drama_1";
+  await updateCardLimits(aoife, 500_000, 1_000_000, "test"); // so only the money rule can bite
+  const g1 = decideAuthorization({ cardId: aoife, amountCents: 2000, merchantName: "SNAP PRINTING DUBLIN 2", mcc: "2741", merchantCountry: "IE", at: at("10:00") });
+  const g1row = db.prepare(`SELECT event_id FROM authorization WHERE id=?`).get(g1.authorizationId) as { event_id: string | null };
+  check("G1", "Ordinary", "€20 on an unassigned officer card", "Approved as general spending (no event)", `${g1.approved ? "approved" : "declined"}, event ${g1row.event_id ?? "none"}`, g1.approved && g1row.event_id === null);
+  const unallocated = societyBalances("soc_drama").available - committedToOpenEvents("soc_drama");
+  const g2 = decideAuthorization({ cardId: aoife, amountCents: unallocated + 1, merchantName: "STAGELIGHT HIRE LTD", mcc: "7394", merchantCountry: "IE", at: at("10:30") });
+  check("G2", "Boundary", "Unallocated money + €0.01 on an unassigned card", "Declined (H3): open events' money is reserved", `${g2.declineCode}`, !g2.approved && g2.declineCode === "insufficient_budget");
+
+  // B3: exactly at the per-purchase cap (Saoirse's card, cap lowered to €50, on a fresh event).
+  const saoirse = "card_drama_3";
+  await updateCardLimits(saoirse, 5000, 9000, "test");
+  createEvent({ societyId: "soc_drama", name: "Cap test", type: "other", startDate: eventDate, endDate: eventDate, expectedAttendees: 10, budgetCents: 10000, cardIds: [saoirse] }, "test");
+  const b3 = decideAuthorization({ cardId: saoirse, amountCents: 5000, merchantName: "COSTUME WORKSHOP DUBLIN", mcc: "5699", merchantCountry: "IE", at: at("14:00") });
   check("B3", "Boundary", "Amount exactly at the per-purchase cap", "Approved; R4 fires", `${b3.approved ? "approved" : "declined"}, R4 ${has(b3.signals, "R4")}`, b3.approved && has(b3.signals, "R4"));
-  const b3b = decideAuthorization({ cardId: capEv.cardId, amountCents: 5001, merchantName: "COSTUME WORKSHOP DUBLIN", mcc: "5699", merchantCountry: "IE", at: at("14:30") });
+  const b3b = decideAuthorization({ cardId: saoirse, amountCents: 5001, merchantName: "COSTUME WORKSHOP DUBLIN", mcc: "5699", merchantCountry: "IE", at: at("14:30") });
   check("B3b", "Boundary", "Cap + €0.01", "Declined by card spending control", `${b3b.declineCode}`, !b3b.approved && b3b.declineCode === "spending_controls");
 
-  // B1 / B2: exactly the remaining event budget, then one cent more (cap = budget, so only H3 applies).
-  const budEv = await createEventWithCard(
-    { societyId: "soc_drama", name: "Budget test", type: "other", startDate: eventDate, endDate: eventDate, expectedAttendees: 10, budgetCents: 10000, perAuthCapCents: 10000, cardholderId: "mem_drama_3" },
-    "test",
-  );
-  decideAuthorization({ cardId: budEv.cardId, amountCents: 4000, merchantName: "COSTUME WORKSHOP DUBLIN", mcc: "5699", merchantCountry: "IE", at: at("14:45") });
+  // B9: the card's monthly limit (€90): €50 + €40 reaches it exactly, then one cent more.
+  const b9a = decideAuthorization({ cardId: saoirse, amountCents: 4000, merchantName: "SNAP PRINTING DUBLIN 2", mcc: "2741", merchantCountry: "IE", at: at("15:10") });
+  const b9b = decideAuthorization({ cardId: saoirse, amountCents: 1, merchantName: "SNAP PRINTING DUBLIN 2", mcc: "2741", merchantCountry: "IE", at: at("15:20") });
+  check("B9", "Boundary", "Monthly card limit exactly reached, then + €0.01", "Approved, then declined (H6)", `${b9a.approved ? "approved" : "declined"}, then ${b9b.declineCode} ${has(b9b.signals, "H6") ? "(H6)" : ""}`, b9a.approved && !b9b.approved && has(b9b.signals, "H6"));
+
+  // B8: five officer cards per society.
+  let b8 = "accepted";
+  try {
+    await createOfficerCard({ societyId: "soc_drama", memberId: "mem_drama_5", perAuthCapCents: 5000, monthlyLimitCents: 10000 }, "test");
+  } catch (e) {
+    b8 = e instanceof UserError ? `rejected (${e.code})` : "error";
+  }
+  check("B8", "Boundary", "Issue a sixth officer card", "Rejected: 5 cards per society", b8, b8 === "rejected (card_limit)");
+
+  // B1 / B2: exactly the remaining event budget, then one cent more (Darragh's €250 cap is above the €100 budget, so only H3 applies).
+  const darragh = "card_drama_4";
+  const budEv = createEvent({ societyId: "soc_drama", name: "Budget test", type: "other", startDate: eventDate, endDate: eventDate, expectedAttendees: 10, budgetCents: 10000, cardIds: [darragh] }, "test");
+  decideAuthorization({ cardId: darragh, amountCents: 4000, merchantName: "COSTUME WORKSHOP DUBLIN", mcc: "5699", merchantCountry: "IE", at: at("14:45") });
   const rem = eventRemaining(budEv.eventId, 10000).remaining; // €60 left
-  const b2 = decideAuthorization({ cardId: budEv.cardId, amountCents: rem + 1, merchantName: "STAGELIGHT HIRE LTD", mcc: "7394", merchantCountry: "IE", at: at("15:00") });
+  const b2 = decideAuthorization({ cardId: darragh, amountCents: rem + 1, merchantName: "STAGELIGHT HIRE LTD", mcc: "7394", merchantCountry: "IE", at: at("15:00") });
   check("B2", "Boundary", "Remaining budget + €0.01", "Declined (H3)", `${b2.declineCode}`, !b2.approved && b2.declineCode === "insufficient_budget");
-  const b1 = decideAuthorization({ cardId: budEv.cardId, amountCents: rem, merchantName: "STAGELIGHT HIRE LTD", mcc: "7394", merchantCountry: "IE", at: at("15:30") });
+  const b1 = decideAuthorization({ cardId: darragh, amountCents: rem, merchantName: "STAGELIGHT HIRE LTD", mcc: "7394", merchantCountry: "IE", at: at("15:30") });
   const remAfter = eventRemaining(budEv.eventId, 10000).remaining;
   check("B1", "Boundary", "Amount exactly equal to remaining budget", "Approved; remaining → €0.00", `${b1.approved ? "approved" : "declined"}, remaining €${(remAfter / 100).toFixed(2)}`, b1.approved && remAfter === 0);
 
   // B6: event window edge (end + 3 days 23:59 vs + 4 days).
-  const winEv = await createEventWithCard(
-    { societyId: "soc_drama", name: "Window test", type: "social", startDate: today, endDate: today, expectedAttendees: 10, budgetCents: 20000, perAuthCapCents: 20000, cardholderId: "mem_drama_4" },
-    "test",
-  );
-  const inWin = decideAuthorization({ cardId: winEv.cardId, amountCents: 2000, merchantName: "FREENOW", mcc: "4121", merchantCountry: "IE", at: dublinToIso(addDays(today, 3), "23:59") });
-  const outWin = decideAuthorization({ cardId: winEv.cardId, amountCents: 2000, merchantName: "FREENOW", mcc: "4121", merchantCountry: "IE", at: dublinToIso(addDays(today, 4), "00:01") });
+  const orla = "card_drama_5";
+  createEvent({ societyId: "soc_drama", name: "Window test", type: "social", startDate: today, endDate: today, expectedAttendees: 10, budgetCents: 20000, cardIds: [orla] }, "test");
+  const inWin = decideAuthorization({ cardId: orla, amountCents: 2000, merchantName: "FREENOW", mcc: "4121", merchantCountry: "IE", at: dublinToIso(addDays(today, 3), "23:59") });
+  const outWin = decideAuthorization({ cardId: orla, amountCents: 2000, merchantName: "FREENOW", mcc: "4121", merchantCountry: "IE", at: dublinToIso(addDays(today, 4), "00:01") });
   check("B6", "Boundary", "End + 3 days 23:59 vs end + 4 days", "Approved vs declined (H2)", `${inWin.approved ? "approved" : "declined"} vs ${outWin.declineCode}`, inWin.approved && !outWin.approved && outWin.declineCode === "outside_event_window");
 
   // B4: cold start. A brand-new category for the society uses the all-society baseline.
-  const b4 = decideAuthorization({ cardId: winEv.cardId, amountCents: 15000, merchantName: "GREAT OUTDOORS", mcc: "5941", merchantCountry: "IE", at: dublinToIso(today, "12:00") });
+  const b4 = decideAuthorization({ cardId: orla, amountCents: 15000, merchantName: "GREAT OUTDOORS", mcc: "5941", merchantCountry: "IE", at: dublinToIso(today, "12:00") });
   const r3 = b4.signals.find((s) => s.id === "R3");
   const stats = db.prepare(`SELECT n FROM society_mcc_stats WHERE society_id='soc_drama' AND mcc_group='sport_gear'`).get() as { n: number } | undefined;
   check("B4", "Boundary", "Society with < 5 purchases in a category (cold start)", "R3 falls back to the global baseline", `society n=${stats?.n ?? 0}, R3 ${r3 ? `baseline=${(r3.data as { baseline: string }).baseline}` : "not fired (within global norm)"}`, (stats?.n ?? 0) < 5 && (!r3 || (r3.data as { baseline: string }).baseline === "global"));
@@ -168,12 +188,9 @@ async function main() {
   await setCardStatus(card, "active", "test unfreeze", "test");
 
   // F9: concurrent authorisations that together exceed the budget.
-  const raceEv = await createEventWithCard(
-    { societyId: "soc_drama", name: "Race test", type: "social", startDate: eventDate, endDate: eventDate, expectedAttendees: 10, budgetCents: 10000, perAuthCapCents: 10000, cardholderId: "mem_drama_2" },
-    "test",
-  );
+  createEvent({ societyId: "soc_drama", name: "Race test", type: "social", startDate: eventDate, endDate: eventDate, expectedAttendees: 10, budgetCents: 10000, cardIds: [darragh] }, "test");
   const race = await Promise.all(
-    [0, 1].map((i) => Promise.resolve().then(() => decideAuthorization({ cardId: raceEv.cardId, amountCents: 6000, merchantName: `APACHE PIZZA ${i}`, mcc: "5814", merchantCountry: "IE", at: at("17:0" + i) }))),
+    [0, 1].map((i) => Promise.resolve().then(() => decideAuthorization({ cardId: darragh, amountCents: 6000, merchantName: `APACHE PIZZA ${i}`, mcc: "5814", merchantCountry: "IE", at: at("17:0" + i) }))),
   );
   const approvedCount = race.filter((r) => r.approved).length;
   check("F9", "Failure", "Two concurrent €60 auths on a €100 budget", "One approved, one declined", `${approvedCount} approved`, approvedCount === 1);
@@ -221,14 +238,12 @@ async function main() {
   env.openRouterBaseUrl = `http://127.0.0.1:${(stub.address() as { port: number }).port}`;
   env.openRouterKey = "sk-or-stub";
 
-  const jevEv = await createEventWithCard(
-    { societyId: "soc_drama", name: "JEV test night", type: "social", startDate: eventDate, endDate: eventDate, expectedAttendees: 80, budgetCents: 30000, perAuthCapCents: 25000, cardholderId: "mem_drama_2", notes: "Pizza for freshers" },
-    "test",
-  );
-  const j1 = decideAuthorization({ cardId: jevEv.cardId, amountCents: 10000, merchantName: "ELECTRO WORLD DUB", mcc: "5732", merchantCountry: "IE", at: at("02:14") });
+  const jevEv = createEvent({ societyId: "soc_drama", name: "JEV test night", type: "social", startDate: eventDate, endDate: eventDate, expectedAttendees: 80, budgetCents: 30000, notes: "Pizza for freshers" }, "test");
+  assignCard(card, jevEv.eventId, "test"); // Cian's card moves from Pizza Night to this event
+  const j1 = decideAuthorization({ cardId: card, amountCents: 10000, merchantName: "ELECTRO WORLD DUB", mcc: "5732", merchantCountry: "IE", at: at("02:14") });
   await assessAuthorization(j1.authorizationId!);
   const j1ra = db.prepare(`SELECT * FROM risk_assessment WHERE authorization_id=? ORDER BY rowid DESC LIMIT 1`).get(j1.authorizationId) as { source: string; risk_level: string; flags: string; cost_usd: number; action_taken: string };
-  const j1card = db.prepare(`SELECT status FROM card WHERE id=?`).get(jevEv.cardId) as { status: string };
+  const j1card = db.prepare(`SELECT status FROM card WHERE id=?`).get(card) as { status: string };
   const j1flags = JSON.parse(j1ra.flags) as { verified: boolean }[];
   const sent = JSON.stringify(lastBody);
   check(
@@ -258,8 +273,8 @@ async function main() {
 
   mode = "bad";
   calls = 0;
-  await setCardStatus(jevEv.cardId, "active", "test", "test");
-  const j4 = decideAuthorization({ cardId: jevEv.cardId, amountCents: 2000, merchantName: "APACHE PIZZA", mcc: "5814", merchantCountry: "IE", at: at("18:00") });
+  await setCardStatus(card, "active", "test", "test");
+  const j4 = decideAuthorization({ cardId: card, amountCents: 2000, merchantName: "APACHE PIZZA", mcc: "5814", merchantCountry: "IE", at: at("18:00") });
   await assessAuthorization(j4.authorizationId!);
   const j4ra = db.prepare(`SELECT source, fallback_reason FROM risk_assessment WHERE authorization_id=? ORDER BY rowid DESC LIMIT 1`).get(j4.authorizationId) as { source: string; fallback_reason: string };
   check("F2b", "Failure", "JEV returns non-JSON twice (stubbed)", "One retry, then rules fallback", `${calls} calls, ${j4ra.source}: ${j4ra.fallback_reason}`, calls === 2 && j4ra.source === "rules_fallback");
@@ -298,18 +313,15 @@ async function main() {
   check("F4b", "Failure", "Signed checkout webhook delivered twice", "200 both times, credited once", `${r1.status}/${r2.status}, ${credits} credit, duplicate=${dupBody.duplicate === true}`, r1.status === 200 && r2.status === 200 && credits === 1 && dupBody.duplicate === true);
   env.stripeSecretKey = "";
 
-  // F10: Stripe API error creating the card.
+  // F10: Stripe API error issuing a replacement card (Orla's card cancelled to free the slot).
+  await setCardStatus(orla, "canceled", "test", "test");
   env.stripeSecretKey = "sk_test_invalid_key_for_f10";
   (env as { issuingMode: string }).issuingMode = "stripe";
-  const f10 = await createEventWithCard(
-    { societyId: "soc_drama", name: "Card error test", type: "social", startDate: eventDate, endDate: eventDate, expectedAttendees: 5, budgetCents: 5000, perAuthCapCents: 5000, cardholderId: "mem_drama_2" },
-    "test",
-  );
+  const f10 = await createOfficerCard({ societyId: "soc_drama", memberId: "mem_drama_5", perAuthCapCents: 5000, monthlyLimitCents: 10000 }, "test");
   (env as { issuingMode: string }).issuingMode = "mock";
   env.stripeSecretKey = "";
   const f10card = db.prepare(`SELECT status, error FROM card WHERE id=?`).get(f10.cardId) as { status: string; error: string };
-  const f10event = db.prepare(`SELECT id FROM event WHERE id=?`).get(f10.eventId);
-  check("F10", "Failure", "Stripe API error creating the card", "Event saved, card pending with a clear error", `event ${f10event ? "saved" : "missing"}, card ${f10card.status}: ${(f10card.error ?? "").slice(0, 50)}`, !!f10event && f10card.status === "pending" && !!f10card.error);
+  check("F10", "Failure", "Stripe API error issuing an officer card", "Card saved as pending with a clear error; retry possible", `card ${f10card.status}: ${(f10card.error ?? "").slice(0, 50)}`, !f10.issued.ok && f10card.status === "pending" && !!f10card.error);
 
   // Invariant: the ledger reconciles for every society.
   const rec = reconcileAll();

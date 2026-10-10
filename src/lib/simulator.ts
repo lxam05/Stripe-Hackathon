@@ -3,7 +3,7 @@ import { enqueueAssessment } from "./assess";
 import { getDb } from "./db";
 import { env } from "./env";
 import { mccInfo } from "./mcc";
-import { UserError } from "./payments";
+import { UserError } from "./errors";
 import { getStripe } from "./stripe";
 
 // Purchase simulator (PRD M9). Mock mode runs the same decision engine the

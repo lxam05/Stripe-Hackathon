@@ -1,12 +1,10 @@
 import { audit, getDb, newId, nowIso } from "./db";
-import { issueCard, setCardStatus } from "./cards";
+import { assignCard, setCardStatus } from "./cards";
 import { committedToOpenEvents, eventRemaining, societyBalances } from "./ledger";
 import { EVENT_TYPES, type EventType } from "./mcc";
 import { fmtEur } from "./money";
-import { UserError } from "./payments";
+import { UserError } from "./errors";
 import { releaseAuthorization } from "./authorize";
-
-export const MAX_ACTIVE_CARDS = 10;
 
 export interface NewEventInput {
   societyId: string;
@@ -16,8 +14,8 @@ export interface NewEventInput {
   endDate: string;
   expectedAttendees: number;
   budgetCents: number;
-  perAuthCapCents: number;
-  cardholderId: string;
+  /** Officer cards that should spend for this event from now on. */
+  cardIds?: string[];
   notes?: string;
 }
 
@@ -31,9 +29,6 @@ export function validateEvent(input: NewEventInput) {
   else if (input.endDate < input.startDate) errors.endDate = "The end date can't be before the start date.";
   if (!Number.isInteger(input.budgetCents) || input.budgetCents < 100) errors.budget = "The budget must be at least €1.";
   if (input.budgetCents > 5_000_000) errors.budget = "Budgets over €50,000 need the Societies Office.";
-  if (!Number.isInteger(input.perAuthCapCents) || input.perAuthCapCents < 100)
-    errors.perAuthCap = "The per-purchase cap must be at least €1.";
-  else if (input.perAuthCapCents > input.budgetCents) errors.perAuthCap = "The per-purchase cap can't be more than the budget.";
   if (!Number.isInteger(input.expectedAttendees) || input.expectedAttendees < 0) errors.expectedAttendees = "Enter a number of attendees.";
   return errors;
 }
@@ -45,52 +40,37 @@ export function budgetWarning(societyId: string, budgetCents: number): string | 
     : null;
 }
 
-export async function createEventWithCard(input: NewEventInput, actor: string) {
+/** Create an event budget and point the chosen officer cards at it. */
+export function createEvent(input: NewEventInput, actor: string) {
   const db = getDb();
   const errors = validateEvent(input);
   if (Object.keys(errors).length) throw new UserError("validation", Object.values(errors)[0]);
-
-  const soc = db.prepare(`SELECT plan_status FROM society WHERE id=?`).get(input.societyId) as { plan_status: string } | undefined;
+  const soc = db.prepare(`SELECT id FROM society WHERE id=?`).get(input.societyId);
   if (!soc) throw new UserError("unknown_society", "Society not found", 404);
-  if (soc.plan_status !== "active") {
-    throw new UserError("plan_required", "Subscribe to the Society Plan to issue event cards.", 402);
+  const cardIds = [...new Set(input.cardIds ?? [])];
+  for (const id of cardIds) {
+    const c = db.prepare(`SELECT society_id, status FROM card WHERE id=?`).get(id) as { society_id: string; status: string } | undefined;
+    if (!c || c.society_id !== input.societyId || c.status === "canceled") throw new UserError("validation", "Pick cards from your society's live officer cards.");
   }
-  const active = db
-    .prepare(`SELECT COUNT(*) n FROM card c JOIN event e ON e.id=c.event_id WHERE e.society_id=? AND e.status='open' AND c.status IN ('active','inactive','pending')`)
-    .get(input.societyId) as { n: number };
-  if (active.n >= MAX_ACTIVE_CARDS) {
-    throw new UserError("card_limit", `The Society Plan allows ${MAX_ACTIVE_CARDS} active event cards. Close a finished event first.`);
-  }
-  const holder = db.prepare(`SELECT id FROM member WHERE id=? AND society_id=?`).get(input.cardholderId, input.societyId);
-  if (!holder) throw new UserError("validation", "Pick a cardholder from your committee.");
 
   const eventId = newId("evt");
-  const cardId = newId("card");
-  db.transaction(() => {
-    db.prepare(
-      `INSERT INTO event (id, society_id, name, type, start_date, end_date, expected_attendees, budget_cents, status, notes, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-    ).run(eventId, input.societyId, input.name.trim(), input.type, input.startDate, input.endDate, input.expectedAttendees, input.budgetCents, "open", (input.notes ?? "").trim().slice(0, 500), nowIso());
-    db.prepare(
-      `INSERT INTO card (id, event_id, member_id, network, last4, exp_month, exp_year, status, per_auth_cap_cents, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
-    ).run(cardId, eventId, input.cardholderId, "mock", "····", 0, 0, "pending", input.perAuthCapCents, nowIso());
-  })();
+  db.prepare(
+    `INSERT INTO event (id, society_id, name, type, start_date, end_date, expected_attendees, budget_cents, status, notes, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+  ).run(eventId, input.societyId, input.name.trim(), input.type, input.startDate, input.endDate, input.expectedAttendees, input.budgetCents, "open", (input.notes ?? "").trim().slice(0, 500), nowIso());
   audit(actor, "event.created", eventId, { budget_cents: input.budgetCents });
-  const issued = await issueCard(cardId, actor);
-  return { eventId, cardId, issued };
+  for (const id of cardIds) assignCard(id, eventId, actor);
+  return { eventId };
 }
 
-/** Close an event: deactivate its card, release pending holds; unspent budget returns to the pool. */
-export async function closeEvent(eventId: string, actor: string) {
+/** Close an event: its cards go back to general spending; unspent budget returns to the pool. */
+export function closeEvent(eventId: string, actor: string) {
   const db = getDb();
   const ev = db.prepare(`SELECT * FROM event WHERE id=?`).get(eventId) as { id: string; status: string; budget_cents: number } | undefined;
   if (!ev) throw new UserError("not_found", "Event not found", 404);
   if (ev.status === "closed") return;
-  const cards = db.prepare(`SELECT id, status FROM card WHERE event_id=?`).all(eventId) as { id: string; status: string }[];
-  for (const c of cards) {
-    if (c.status === "active") await setCardStatus(c.id, "inactive", "Event closed", actor);
-  }
+  const cards = db.prepare(`SELECT id FROM card WHERE event_id=?`).all(eventId) as { id: string }[];
+  for (const c of cards) assignCard(c.id, null, actor);
   db.prepare(`UPDATE event SET status='closed' WHERE id=?`).run(eventId);
   const remaining = eventRemaining(eventId, ev.budget_cents).remaining;
   audit(actor, "event.closed", eventId, { returned_to_pool_cents: remaining });
@@ -123,19 +103,4 @@ export async function resolveFlag(flagId: string, resolution: Resolution, note: 
   if (resolution === "legit" && opts.unfreeze && card.status === "inactive") {
     await setCardStatus(f.card_id, "active", "Unfrozen by treasurer after review", actor);
   }
-}
-
-/** Issue a replacement card for an event whose card was cancelled. */
-export async function replaceCard(eventId: string, actor: string) {
-  const db = getDb();
-  const old = db.prepare(`SELECT * FROM card WHERE event_id=? ORDER BY created_at DESC LIMIT 1`).get(eventId) as
-    | { member_id: string; per_auth_cap_cents: number; status: string }
-    | undefined;
-  if (!old) throw new UserError("not_found", "No card to replace", 404);
-  if (old.status !== "canceled") throw new UserError("validation", "Only cancelled cards can be replaced.");
-  const cardId = newId("card");
-  db.prepare(
-    `INSERT INTO card (id, event_id, member_id, network, last4, exp_month, exp_year, status, per_auth_cap_cents, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)`,
-  ).run(cardId, eventId, old.member_id, "mock", "····", 0, 0, "pending", old.per_auth_cap_cents, nowIso());
-  return issueCard(cardId, actor);
 }

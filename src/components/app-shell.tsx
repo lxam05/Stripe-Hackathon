@@ -3,16 +3,11 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { env, jevEnabled, stripeEnabled } from "@/lib/env";
 import { openFlagCount } from "@/lib/queries";
+import { ROLE_LABEL } from "@/lib/roles";
 import type { Actor } from "@/lib/session";
 import { Logo } from "./logo";
 import { NavLinks, type NavItem } from "./nav-links";
 import { SwitchUser } from "./switch-user";
-
-const ROLE_LABEL: Record<string, string> = {
-  treasurer: "Treasurer",
-  events_officer: "Events officer",
-  committee: "Committee",
-};
 
 export function AppShell({ actor, children }: { actor: Actor; children: ReactNode }) {
   const flags = openFlagCount(actor.kind === "member" ? actor.societyId : undefined);
@@ -20,7 +15,8 @@ export function AppShell({ actor, children }: { actor: Actor; children: ReactNod
     actor.kind === "member"
       ? [
           { href: "/dashboard", label: "Overview", icon: "dashboard" },
-          { href: "/events", label: "Events & cards", icon: "events" },
+          { href: "/cards", label: "Officer cards", icon: "cards" },
+          { href: "/events", label: "Events", icon: "events" },
           { href: "/review", label: "Review queue", icon: "review", badge: flags },
           { href: "/transactions", label: "Transactions", icon: "transactions" },
           { href: "/funding", label: "Funding", icon: "funding" },

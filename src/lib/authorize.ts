@@ -1,5 +1,6 @@
 import { getDb, newId } from "./db";
-import { eventRemaining, postEntry, societyBalances } from "./ledger";
+import { cardMonthSpend } from "./cards";
+import { committedToOpenEvents, eventRemaining, postEntry, societyBalances } from "./ledger";
 import { mccInfo } from "./mcc";
 import { addDays, dublinParts, fmtEur } from "./money";
 import { resolvePolicy } from "./policy";
@@ -29,6 +30,8 @@ export interface PurchaseInput {
   at: string; // UTC ISO purchase time
   stripeAuthId?: string;
   source?: "live" | "seed";
+  /** Charge to this event instead of the card's current assignment (synthetic replay only). */
+  eventId?: string | null;
 }
 
 export interface Decision {
@@ -47,10 +50,12 @@ export const TINY_AMOUNT_CENTS = 100; // < €1: merchant card checks (B7) — n
 
 interface CardRow {
   id: string;
-  event_id: string;
+  society_id: string;
+  event_id: string | null;
   member_id: string;
   status: string;
   per_auth_cap_cents: number;
+  monthly_limit_cents: number;
 }
 interface EventRow {
   id: string;
@@ -71,36 +76,40 @@ function hoursBefore(iso: string, h: number) {
   return new Date(new Date(iso).getTime() - h * 3600_000).toISOString();
 }
 
-function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow, member: { id: string; cardholder_created_at: string | null }) {
+// `event` is null when the card isn't assigned to an event: general society spending,
+// limited to money not already reserved for open events.
+function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow | null, member: { id: string; cardholder_created_at: string | null }) {
   const db = getDb();
   const signals: Signal[] = [];
   const amount = input.amountCents;
   const mcc = mccInfo(input.mcc);
   const local = dublinParts(input.at);
-  const societyId = event.society_id;
+  const societyId = card.society_id;
 
   // ── Hard rules ────────────────────────────────────────────────────────────
-  if (card.status !== "active" || event.status !== "open") {
+  if (card.status !== "active" || (event && event.status !== "open")) {
     const what =
-      event.status !== "open"
-        ? `event “${event.name}” is closed`
-        : card.status === "inactive"
-          ? "card is frozen"
-          : `card status is ${card.status}`;
+      card.status === "inactive"
+        ? "card is frozen"
+        : card.status !== "active"
+          ? `card status is ${card.status}`
+          : `event “${event!.name}” is closed`;
     signals.push({ id: "H1", label: "Card not active", points: 0, hard: true, evidence: `Declined: ${what}` });
   }
 
-  const earliest = addDays(event.start_date, -WINDOW_BEFORE_DAYS);
-  const latest = addDays(event.end_date, WINDOW_AFTER_DAYS);
-  if (local.date < earliest || local.date > latest) {
-    signals.push({
-      id: "H2",
-      label: "Outside event window",
-      points: 0,
-      hard: true,
-      evidence: `Purchase on ${local.date}; card valid ${earliest} → ${latest}`,
-      data: { purchase_date: local.date, earliest, latest },
-    });
+  if (event) {
+    const earliest = addDays(event.start_date, -WINDOW_BEFORE_DAYS);
+    const latest = addDays(event.end_date, WINDOW_AFTER_DAYS);
+    if (local.date < earliest || local.date > latest) {
+      signals.push({
+        id: "H2",
+        label: "Outside event window",
+        points: 0,
+        hard: true,
+        evidence: `Purchase on ${local.date}; “${event.name}” spending runs ${earliest} → ${latest}`,
+        data: { purchase_date: local.date, earliest, latest },
+      });
+    }
   }
 
   // Card-level spending control. With Stripe Issuing this is enforced by Stripe before
@@ -115,19 +124,45 @@ function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow, me
     });
   }
 
-  const ev = eventRemaining(event.id, event.budget_cents);
-  const soc = societyBalances(societyId);
-  const limit = Math.min(ev.remaining, soc.available);
-  if (amount > limit) {
-    const which = ev.remaining <= soc.available ? "event budget" : "society balance";
+  const monthSpent = cardMonthSpend(card.id, input.at);
+  if (monthSpent + amount > card.monthly_limit_cents) {
     signals.push({
-      id: "H3",
-      label: "Insufficient budget",
+      id: "H6",
+      label: "Over monthly card limit",
       points: 0,
       hard: true,
-      evidence: `${fmtEur(amount)} exceeds remaining ${which} (${fmtEur(Math.max(0, limit))})`,
-      data: { amount, event_remaining: ev.remaining, society_available: soc.available },
+      evidence: `${fmtEur(amount)} would take this card to ${fmtEur(monthSpent + amount)} this month, over its ${fmtEur(card.monthly_limit_cents)} monthly limit`,
+      data: { month_spent: monthSpent, monthly_limit: card.monthly_limit_cents },
     });
+  }
+
+  const soc = societyBalances(societyId);
+  if (event) {
+    const ev = eventRemaining(event.id, event.budget_cents);
+    const limit = Math.min(ev.remaining, soc.available);
+    if (amount > limit) {
+      const which = ev.remaining <= soc.available ? "event budget" : "society balance";
+      signals.push({
+        id: "H3",
+        label: "Insufficient budget",
+        points: 0,
+        hard: true,
+        evidence: `${fmtEur(amount)} exceeds remaining ${which} (${fmtEur(Math.max(0, limit))})`,
+        data: { amount, event_remaining: ev.remaining, society_available: soc.available },
+      });
+    }
+  } else {
+    const unallocated = soc.available - committedToOpenEvents(societyId);
+    if (amount > unallocated) {
+      signals.push({
+        id: "H3",
+        label: "Insufficient budget",
+        points: 0,
+        hard: true,
+        evidence: `${fmtEur(amount)} exceeds the society's unallocated money (${fmtEur(Math.max(0, unallocated))}); the rest is reserved for open events`,
+        data: { amount, society_available: soc.available, unallocated },
+      });
+    }
   }
 
   const policy = resolvePolicy(societyId, input.mcc);
@@ -143,13 +178,13 @@ function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow, me
   }
 
   // ── Scored rules ──────────────────────────────────────────────────────────
-  if (policy.action === "review" && !policy.preapproved.includes(event.type as never)) {
+  if (policy.action === "review" && !(event && policy.preapproved.includes(event.type as never))) {
     signals.push({
       id: "R1",
       label: "Conditional category",
       points: 25,
-      evidence: `MCC ${input.mcc} (${mcc.label}) needs review for a ${event.type} event`,
-      data: { mcc: input.mcc, event_type: event.type },
+      evidence: `MCC ${input.mcc} (${mcc.label}) needs review ${event ? `for a ${event.type} event` : "outside an event"}`,
+      data: { mcc: input.mcc, event_type: event?.type ?? null },
     });
   }
 
@@ -241,12 +276,12 @@ function computeSignals(input: PurchaseInput, card: CardRow, event: EventRow, me
     });
   }
 
-  if (input.merchantCountry.toUpperCase() !== "IE" && event.type !== "trip") {
+  if (input.merchantCountry.toUpperCase() !== "IE" && event?.type !== "trip") {
     signals.push({
       id: "R8",
       label: "Foreign merchant",
       points: 15,
-      evidence: `Merchant in ${input.merchantCountry.toUpperCase()} on a non-trip event`,
+      evidence: `Merchant in ${input.merchantCountry.toUpperCase()} ${event ? "on a non-trip event" : "outside an event"}`,
     });
   }
 
@@ -316,6 +351,7 @@ const HARD_CODES: Record<string, string> = {
   H3: "insufficient_budget",
   H4: "blocked_mcc",
   H5: "spending_controls",
+  H6: "spending_controls",
 };
 
 /**
@@ -357,7 +393,8 @@ export function decideAuthorization(input: PurchaseInput): Decision {
         decisionMs: performance.now() - t0,
       };
     }
-    const event = db.prepare(`SELECT * FROM event WHERE id=?`).get(card.event_id) as EventRow;
+    const eventId = input.eventId !== undefined ? input.eventId : card.event_id;
+    const event = eventId ? ((db.prepare(`SELECT * FROM event WHERE id=? AND society_id=?`).get(eventId, card.society_id) as EventRow | undefined) ?? null) : null;
     const member = db.prepare(`SELECT id, cardholder_created_at FROM member WHERE id=?`).get(card.member_id) as {
       id: string;
       cardholder_created_at: string | null;
@@ -390,8 +427,8 @@ export function decideAuthorization(input: PurchaseInput): Decision {
       id,
       input.stripeAuthId ?? null,
       card.id,
-      event.id,
-      event.society_id,
+      event?.id ?? null,
+      card.society_id,
       card.member_id,
       input.amountCents,
       input.merchantName,
@@ -411,8 +448,8 @@ export function decideAuthorization(input: PurchaseInput): Decision {
 
     if (approved) {
       postEntry({
-        societyId: event.society_id,
-        eventId: event.id,
+        societyId: card.society_id,
+        eventId: event?.id ?? null,
         type: "auth_hold",
         amountCents: input.amountCents,
         refType: "authorization",
@@ -438,7 +475,7 @@ export function captureAuthorization(authId: string, amountCents?: number, at?: 
         if (seen) return false;
       }
       const a = db.prepare(`SELECT * FROM authorization WHERE id=?`).get(authId) as
-        | { id: string; society_id: string; event_id: string; amount_cents: number; status: string; mcc_group: string; merchant_name: string }
+        | { id: string; society_id: string; event_id: string | null; amount_cents: number; status: string; mcc_group: string; merchant_name: string }
         | undefined;
       if (!a || a.status !== "pending") return false;
       const amt = amountCents ?? a.amount_cents;
@@ -466,7 +503,7 @@ export function releaseAuthorization(authId: string, at?: string, reason: "rever
   return db
     .transaction(() => {
       const a = db.prepare(`SELECT * FROM authorization WHERE id=?`).get(authId) as
-        | { id: string; society_id: string; event_id: string; amount_cents: number; status: string }
+        | { id: string; society_id: string; event_id: string | null; amount_cents: number; status: string }
         | undefined;
       if (!a || a.status !== "pending") return false;
       postEntry({

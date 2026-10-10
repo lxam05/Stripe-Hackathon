@@ -5,6 +5,8 @@ import { postEntry, societyBalances } from "./ledger";
 import { seedGlobalPolicy, setPolicy } from "./policy";
 import { addDays, dublinToIso } from "./money";
 import type { EventType } from "./mcc";
+import { PLAN_LAPSED_REASON } from "./cards";
+import { defaultLimits, MAX_MONTHLY_LIMIT_CENTS, type Role } from "./roles";
 
 // ───────────────────────────────────────────────────────────────────────────────
 // Synthetic dataset (PRD §10). Everything here is fictional: societies, people,
@@ -53,7 +55,8 @@ interface SocietySpec {
   category: string;
   blurb: string;
   plan: "active" | "expired";
-  members: [string, "treasurer" | "events_officer" | "committee"][];
+  /** Five committee officers, one officer card each. Index 0 is the treasurer, 1 the events officer. */
+  members: [string, Role][];
   templates: Template[];
   eventsPerYear: number;
   preapprove?: { mcc: string; types: EventType[] }[];
@@ -70,8 +73,9 @@ const SOCIETIES: SocietySpec[] = [
     members: [
       ["Aoife Byrne", "treasurer"],
       ["Cian Murphy", "events_officer"],
-      ["Saoirse Kelly", "committee"],
-      ["Darragh Walsh", "committee"],
+      ["Saoirse Kelly", "chair"],
+      ["Darragh Walsh", "secretary"],
+      ["Orla Brady", "pro"],
     ],
     eventsPerYear: 20,
     templates: [
@@ -93,8 +97,9 @@ const SOCIETIES: SocietySpec[] = [
     members: [
       ["Niamh O'Brien", "treasurer"],
       ["Conor Ryan", "events_officer"],
-      ["Emeka Okafor", "committee"],
-      ["Priya Nair", "committee"],
+      ["Emeka Okafor", "chair"],
+      ["Priya Nair", "secretary"],
+      ["Daniel Kowalski", "pro"],
     ],
     eventsPerYear: 22,
     preapprove: [
@@ -120,7 +125,9 @@ const SOCIETIES: SocietySpec[] = [
     members: [
       ["Róisín Doyle", "treasurer"],
       ["Fionn Gallagher", "events_officer"],
-      ["Hannah McCarthy", "committee"],
+      ["Hannah McCarthy", "chair"],
+      ["Adam Nolan", "secretary"],
+      ["Grace Okonkwo", "pro"],
     ],
     eventsPerYear: 19,
     templates: [
@@ -141,8 +148,9 @@ const SOCIETIES: SocietySpec[] = [
     members: [
       ["Sinéad Kavanagh", "treasurer"],
       ["Oisín Brennan", "events_officer"],
-      ["Tom Fitzgerald", "committee"],
-      ["Lucía García", "committee"],
+      ["Tom Fitzgerald", "chair"],
+      ["Lucía García", "secretary"],
+      ["Ciara Lynch", "pro"],
     ],
     eventsPerYear: 20,
     templates: [
@@ -163,7 +171,9 @@ const SOCIETIES: SocietySpec[] = [
     members: [
       ["Jack Quinn", "treasurer"],
       ["Eoin Duffy", "events_officer"],
-      ["Mei Chen", "committee"],
+      ["Mei Chen", "chair"],
+      ["Rory Keane", "secretary"],
+      ["Ana Popescu", "pro"],
     ],
     eventsPerYear: 19,
     preapprove: [
@@ -310,15 +320,16 @@ export async function seed(opts: { log?: (s: string) => void } = {}): Promise<Se
     }
   }
   // Current term (Sept/Oct 2026) for active societies — these stay open for the demo.
-  const currentTerm: [string, number, string][] = [
-    ["soc_robotics", 0, "2026-10-01"],
-    ["soc_robotics", 1, "2026-10-21"],
-    ["soc_law", 2, "2026-10-08"],
-    ["soc_law", 0, "2026-10-23"],
-    ["soc_hillwalking", 0, "2026-10-11"],
-    ["soc_esports", 0, "2026-10-16"],
+  // [society, template, start, officer whose card spends for it]
+  const currentTerm: [string, number, string, number][] = [
+    ["soc_robotics", 0, "2026-10-01", 1],
+    ["soc_robotics", 1, "2026-10-21", 2],
+    ["soc_law", 2, "2026-10-08", 1],
+    ["soc_law", 0, "2026-10-23", 3],
+    ["soc_hillwalking", 0, "2026-10-11", 1],
+    ["soc_esports", 0, "2026-10-16", 1],
   ];
-  for (const [sid, ti, start] of currentTerm) {
+  for (const [sid, ti, start, holderIdx] of currentTerm) {
     const s = SOCIETIES.find((x) => x.id === sid)!;
     const t = s.templates[ti];
     const ev: PlannedEvent = {
@@ -328,7 +339,7 @@ export async function seed(opts: { log?: (s: string) => void } = {}): Promise<Se
       start,
       end: addDays(start, (t.days ?? 1) - 1),
       attendees: int(t.attendees[0], t.attendees[1]),
-      holderIdx: 1,
+      holderIdx,
       current: true,
       purchases: [],
     };
@@ -421,7 +432,7 @@ export async function seed(opts: { log?: (s: string) => void } = {}): Promise<Se
     const cands = bySoc(slug, pred);
     if (!cands.length) return;
     const ev = pick(cands);
-    add(ev, { date: near(ev), ...p }, "hard_negative", false);
+    add(ev, { date: near(ev), holderIdx: p.cents >= 40_000 ? 0 : undefined, ...p }, "hard_negative", false);
   };
   hn("robotics", (e) => e.t.name === "Arduino Workshop", { time: "14:05", mcc: "5045", merchant: "MOUSER ELECTRONICS", cents: 42000 });
   hn("robotics", (e) => e.t.type === "trip", { time: "11:20", mcc: "4511", merchant: "RYANAIR", cents: 52000 });
@@ -442,45 +453,68 @@ export async function seed(opts: { log?: (s: string) => void } = {}): Promise<Se
   add(cur("hillwalking-cur-0"), { date: "2026-10-07", time: "12:15", mcc: "5941", merchant: "GREAT OUTDOORS", cents: 9600 }, "normal");
   cur("hillwalking-cur-0").purchases.at(-1)!.label = { anomaly: false, type: null };
 
-  // ── Budgets & caps (treasurers leave ~30% slack) ───────────────────────────
-  const budgets = new Map<string, { budget: number; cap: number }>();
+  // ── Budgets (treasurers leave ~30% slack) ──────────────────────────────────
+  const isNormal = (p: Planned) => !p.label.anomaly || ["personal_purchase", "night_purchase", "foreign_non_trip", "duplicate"].includes(p.label.type!);
+  const budgets = new Map<string, number>();
   for (const ev of events) {
-    const normal = ev.purchases.filter((p) => !p.label.anomaly || ["personal_purchase", "night_purchase", "foreign_non_trip", "duplicate"].includes(p.label.type!));
-    const sum = normal.reduce((s, p) => s + p.cents, 0) + (ev.current ? 20000 : 0);
-    const max = Math.max(...normal.map((p) => p.cents), 5000);
-    const budget = roundUp(sum * 1.3);
-    const cap = Math.min(budget, Math.max(10000, roundUp(max * 1.15)));
-    budgets.set(ev.key, { budget, cap });
+    const sum = ev.purchases.filter(isNormal).reduce((s, p) => s + p.cents, 0) + (ev.current ? 20000 : 0);
+    budgets.set(ev.key, roundUp(sum * 1.3));
+  }
+
+  // ── Officer cards: one per committee member, limits sized from what they buy ──
+  const spec = (societyId: string) => SOCIETIES.find((x) => x.id === societyId)!;
+  const holderOf = (ev: PlannedEvent, p?: Planned) => memberIds[ev.societyId][Math.min(p?.holderIdx ?? ev.holderIdx, spec(ev.societyId).members.length - 1)];
+  const cardOf = (memberId: string) => memberId.replace(/^mem_/, "card_");
+  const roleOf = new Map(SOCIETIES.flatMap((s) => s.members.map(([, role], i) => [memberIds[s.id][i], role] as const)));
+  const caps = new Map<string, number>();
+  for (const [memberId, role] of roleOf) caps.set(memberId, defaultLimits(role).perAuthCapCents);
+  for (const ev of events) {
+    for (const p of ev.purchases.filter(isNormal)) {
+      const m = holderOf(ev, p);
+      caps.set(m, Math.max(caps.get(m)!, roundUp(p.cents * 1.15)));
+    }
   }
   for (const ev of splitEvents) {
-    const b = budgets.get(ev.key)!;
+    const cap = caps.get(holderOf(ev))!;
     const d = near(ev);
     const h = int(10, 16);
-    const a1 = Math.round(b.cap * between(0.85, 0.98));
-    const a2 = Math.round(b.cap * between(0.85, 0.98));
+    const a1 = Math.round(cap * between(0.85, 0.98));
+    const a2 = Math.round(cap * between(0.85, 0.98));
     const [mcc, merchant] = pick(ev.t.items);
     add(ev, { date: d, time: hhmm(h), mcc, merchant, cents: a1 }, "split_purchase");
     add(ev, { date: d, time: hhmm(h + int(1, 3)), mcc, merchant, cents: a2 }, "split_purchase");
-    b.budget = roundUp(b.budget + a1 + a2);
+    budgets.set(ev.key, roundUp(budgets.get(ev.key)! + a1 + a2));
+  }
+  // Monthly limits leave 20% headroom over each officer's busiest month, so the history
+  // replays without tripping them.
+  const monthly = new Map<string, Map<string, number>>();
+  for (const ev of events) {
+    for (const p of ev.purchases) {
+      const m = holderOf(ev, p);
+      const byMonth = monthly.get(m) ?? new Map<string, number>();
+      byMonth.set(p.date.slice(0, 7), (byMonth.get(p.date.slice(0, 7)) ?? 0) + p.cents);
+      monthly.set(m, byMonth);
+    }
+  }
+  for (const s of SOCIETIES) {
+    for (const memberId of memberIds[s.id]) {
+      const role = roleOf.get(memberId)!;
+      const busiest = Math.max(0, ...(monthly.get(memberId)?.values() ?? []));
+      const cap = caps.get(memberId)!;
+      const limit = Math.min(MAX_MONTHLY_LIMIT_CENTS, Math.max(defaultLimits(role).monthlyLimitCents, cap, roundUp(busiest * 1.2, 50000)));
+      db.prepare(
+        `INSERT INTO card (id, society_id, member_id, event_id, network, stripe_card_id, last4, exp_month, exp_year, status, per_auth_cap_cents, monthly_limit_cents, created_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      ).run(cardOf(memberId), s.id, memberId, null, "mock", `mock_ic_${memberId}`, String(int(1000, 9999)), 8, 2028, "active", Math.min(cap, limit), limit, "2025-08-28T10:05:00.000Z");
+    }
   }
 
-  // ── Write events + cards ──────────────────────────────────────────────────
-  const cardIds = new Map<string, string>();
+  // ── Write events ──────────────────────────────────────────────────────────
+  const eventIdOf = (ev: PlannedEvent) => `evt_${ev.key.replace(/-/g, "_")}`;
   for (const ev of events) {
-    const { budget, cap } = budgets.get(ev.key)!;
-    const s = SOCIETIES.find((x) => x.id === ev.societyId)!;
-    const holder = memberIds[s.id][Math.min(ev.holderIdx, s.members.length - 1)];
-    const eventId = `evt_${ev.key.replace(/-/g, "_")}`;
-    const name = ev.current ? ev.t.name : `${ev.t.name}`;
     db.prepare(
       `INSERT INTO event (id, society_id, name, type, start_date, end_date, expected_attendees, budget_cents, status, notes, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-    ).run(eventId, ev.societyId, name, ev.t.type, ev.start, ev.end, ev.attendees, budget, "open", ev.t.notes ?? "", dublinToIso(addDays(ev.start, -21), "10:00"));
-    const cardId = `card_${ev.key.replace(/-/g, "_")}`;
-    const exp = new Date(`${ev.start}T00:00:00Z`);
-    db.prepare(
-      `INSERT INTO card (id, event_id, member_id, network, stripe_card_id, last4, exp_month, exp_year, status, per_auth_cap_cents, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-    ).run(cardId, eventId, holder, "mock", `mock_ic_${ev.key}`, String(int(1000, 9999)), exp.getUTCMonth() + 1, exp.getUTCFullYear() + 3, "active", cap, dublinToIso(addDays(ev.start, -21), "10:05"));
-    cardIds.set(ev.key, cardId);
+    ).run(eventIdOf(ev), ev.societyId, ev.t.name, ev.t.type, ev.start, ev.end, ev.attendees, budgets.get(ev.key)!, "open", ev.t.notes ?? "", dublinToIso(addDays(ev.start, -21), "10:00"));
   }
 
   // ── Funding schedule ──────────────────────────────────────────────────────
@@ -516,14 +550,15 @@ export async function seed(opts: { log?: (s: string) => void } = {}): Promise<Se
   // ── Purchases + closures, replayed chronologically through the real engine ──
   const labels: { authId: string; anomaly: boolean; type: string | null; at: string }[] = [];
   for (const ev of events) {
-    const cardId = cardIds.get(ev.key)!;
+    const eventId = eventIdOf(ev);
     for (const p of ev.purchases) {
       const at = dublinToIso(p.date, p.time);
+      const cardId = cardOf(holderOf(ev, p));
       steps.push({
         at,
         kind: "buy",
         run: () => {
-          const d = decideAuthorization({ cardId, amountCents: p.cents, merchantName: p.merchant, mcc: p.mcc, merchantCity: p.city, merchantCountry: p.country, at, source: "seed" });
+          const d = decideAuthorization({ cardId, eventId, amountCents: p.cents, merchantName: p.merchant, mcc: p.mcc, merchantCity: p.city, merchantCountry: p.country, at, source: "seed" });
           if (!d.authorizationId) return;
           labels.push({ authId: d.authorizationId, anomaly: p.label.anomaly, type: p.label.type, at });
           if (d.approved && !(ev.current && p.date >= "2026-10-08")) {
@@ -538,8 +573,7 @@ export async function seed(opts: { log?: (s: string) => void } = {}): Promise<Se
         at: dublinToIso(addDays(ev.end, 10), "23:00"),
         kind: "close",
         run: () => {
-          db.prepare(`UPDATE event SET status='closed' WHERE id=?`).run(`evt_${ev.key.replace(/-/g, "_")}`);
-          db.prepare(`UPDATE card SET status='inactive', status_reason='Event closed' WHERE id=?`).run(cardId);
+          db.prepare(`UPDATE event SET status='closed' WHERE id=?`).run(eventId);
         },
       });
     }
@@ -591,6 +625,13 @@ export async function seed(opts: { log?: (s: string) => void } = {}): Promise<Se
   db.prepare(
     `UPDATE risk_assessment SET created_at=(SELECT created_at FROM authorization WHERE id=risk_assessment.authorization_id)`,
   ).run();
+
+  // This term's events: the officer running each one has pointed their card at it.
+  for (const ev of events.filter((e) => e.current)) {
+    db.prepare(`UPDATE card SET event_id=? WHERE id=?`).run(eventIdOf(ev), cardOf(holderOf(ev)));
+  }
+  // Drama's plan lapsed on 30 Sept, so its officer cards are frozen until it renews.
+  db.prepare(`UPDATE card SET status='inactive', status_reason=? WHERE society_id='soc_drama'`).run(PLAN_LAPSED_REASON);
 
   // Drama's 2025/26 year ended: unspent grant returned, €180 carried over for 2026/27.
   const drama = societyBalances("soc_drama");

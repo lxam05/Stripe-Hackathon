@@ -3,6 +3,7 @@ import { z } from "zod";
 import { env, jevEnabled } from "./env";
 import { getDb } from "./db";
 import { BLOCKED_MCCS, REVIEW_MCCS, mccInfo } from "./mcc";
+import { cardMonthSpend } from "./cards";
 import { dublinParts } from "./money";
 import type { Signal } from "./authorize";
 
@@ -12,7 +13,7 @@ import type { Signal } from "./authorize";
 // recommends. It never approves, declines or moves money.
 // ───────────────────────────────────────────────────────────────────────────────
 
-export const PROMPT_VERSION = "jev-v1.2";
+export const PROMPT_VERSION = "jev-v1.3";
 
 const FLAG_CODES = [
   "MCC_MISMATCH",
@@ -81,6 +82,7 @@ Calibration:
 - Most purchases are legitimate. Student events legitimately include food, printing, venue/room hire, equipment rental, transport, tickets and costumes.
 - Judge against THIS society's own baseline first (society.mcc_profile), then general knowledge of what student events cost in Ireland.
 - Use the event context: name, type, notes, expected attendees (e.g. pizza for 80 people at €2–4/head is normal).
+- Purchases are made on officer cards (one per committee member). If event is null, the card wasn't assigned to an event: judge it as general society spending against the society's purpose and the officer's role.
 - Precedents marked "approved by treasurer" are strong evidence that similar purchases are normal.
 - Flag only with specific evidence. A single mild oddity (e.g. a late taxi after a social) is "low".
 - "high" means a treasurer should act now: likely personal use, wrong category for the event, policy breach or clear manipulation.
@@ -171,7 +173,7 @@ export function buildContext(authId: string) {
   const a = db.prepare(`SELECT * FROM authorization WHERE id=?`).get(authId) as
     | {
         id: string;
-        event_id: string;
+        event_id: string | null;
         society_id: string;
         member_id: string;
         card_id: string;
@@ -189,28 +191,37 @@ export function buildContext(authId: string) {
       }
     | undefined;
   if (!a) throw new Error("authorization not found");
-  const e = db.prepare(`SELECT * FROM event WHERE id=?`).get(a.event_id) as {
-    id: string;
-    name: string;
-    type: string;
-    start_date: string;
-    end_date: string;
-    expected_attendees: number;
-    budget_cents: number;
-    notes: string;
-  };
+  const e = a.event_id
+    ? (db.prepare(`SELECT * FROM event WHERE id=?`).get(a.event_id) as {
+        id: string;
+        name: string;
+        type: string;
+        start_date: string;
+        end_date: string;
+        expected_attendees: number;
+        budget_cents: number;
+        notes: string;
+      })
+    : null;
   const s = db.prepare(`SELECT id, name, category FROM society WHERE id=?`).get(a.society_id) as { id: string; name: string; category: string };
   const m = db.prepare(`SELECT member_ref, role, created_at FROM member WHERE id=?`).get(a.member_id) as { member_ref: string; role: string; created_at: string };
-  const card = db.prepare(`SELECT per_auth_cap_cents FROM card WHERE id=?`).get(a.card_id) as { per_auth_cap_cents: number };
+  const card = db.prepare(`SELECT per_auth_cap_cents, monthly_limit_cents FROM card WHERE id=?`).get(a.card_id) as {
+    per_auth_cap_cents: number;
+    monthly_limit_cents: number;
+  };
+  // Spend on this card earlier in the month, excluding the purchase being assessed.
+  const monthSpent = cardMonthSpend(a.card_id, a.created_at) - (a.decision === "approved" ? a.amount_cents : 0);
 
-  const evLedger = db
-    .prepare(
-      `SELECT
+  const evLedger = e
+    ? (db
+        .prepare(
+          `SELECT
         COALESCE(SUM(CASE WHEN type='spend' THEN amount_cents WHEN type='refund' THEN -amount_cents END),0) spent,
         COALESCE(SUM(CASE WHEN type='auth_hold' THEN amount_cents WHEN type='hold_release' THEN -amount_cents END),0) held
        FROM ledger_entry WHERE event_id=? AND created_at <= ? AND NOT (ref_id = ? AND type='auth_hold')`,
-    )
-    .get(e.id, a.created_at, a.id) as { spent: number; held: number };
+        )
+        .get(e.id, a.created_at, a.id) as { spent: number; held: number })
+    : null;
 
   // As-of profile: only purchases captured before this one (no look-ahead in the eval).
   const prior = db
@@ -233,8 +244,8 @@ export function buildContext(authId: string) {
 
   const precedents = db
     .prepare(
-      `SELECT au.amount_cents, au.mcc, ev.name event_name, au.society_id, f.resolution_note
-       FROM flag f JOIN authorization au ON au.id=f.authorization_id JOIN event ev ON ev.id=au.event_id
+      `SELECT au.amount_cents, au.mcc, COALESCE(ev.name, 'general spending') event_name, au.society_id, f.resolution_note
+       FROM flag f JOIN authorization au ON au.id=f.authorization_id LEFT JOIN event ev ON ev.id=au.event_id
        WHERE f.status='legit' AND au.mcc_group=? AND au.id != ? AND f.resolved_at < ? ORDER BY f.resolved_at DESC LIMIT 4`,
     )
     .all(a.mcc_group, a.id, a.created_at) as { amount_cents: number; mcc: string; event_name: string; society_id: string; resolution_note: string | null }[];
@@ -260,19 +271,27 @@ export function buildContext(authId: string) {
       decline_reason: a.decline_reason ?? undefined,
       rules_score: a.rules_score,
       rule_signals: signals.map((x) => ({ id: x.id, evidence: x.evidence })),
+    },
+    card: {
+      holder_role: m.role,
       per_purchase_cap_eur: eur(card.per_auth_cap_cents),
+      monthly_limit_eur: eur(card.monthly_limit_cents),
+      spent_this_month_eur: eur(Math.max(0, monthSpent)),
     },
-    event: {
-      name: e.name,
-      type: e.type,
-      start: e.start_date,
-      end: e.end_date,
-      expected_attendees: e.expected_attendees,
-      budget_eur: eur(e.budget_cents),
-      spent_eur: eur(evLedger.spent),
-      held_eur: eur(evLedger.held),
-      notes: e.notes || undefined,
-    },
+    event:
+      e && evLedger
+        ? {
+            name: e.name,
+            type: e.type,
+            start: e.start_date,
+            end: e.end_date,
+            expected_attendees: e.expected_attendees,
+            budget_eur: eur(e.budget_cents),
+            spent_eur: eur(evLedger.spent),
+            held_eur: eur(evLedger.held),
+            notes: e.notes || undefined,
+          }
+        : null,
     society: {
       name: s.name,
       category: s.category,

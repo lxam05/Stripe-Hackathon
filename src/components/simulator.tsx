@@ -13,9 +13,12 @@ interface CardOpt {
   society: string;
   holder: string;
   status: string;
-  eventType: string;
+  /** Event the card is spending for; null = general spending. */
+  eventName: string | null;
+  eventType: string | null;
   cap: number;
   remaining: number;
+  monthLeft: number;
 }
 interface Preset {
   label: string;
@@ -119,13 +122,20 @@ export function Simulator({
           <select id="card" className={field} value={cardId} onChange={(e) => setCardId(e.target.value)}>
             {cards.map((c) => (
               <option key={c.id} value={c.id}>
-                {c.label} · {c.holder} · {c.society.replace(/^UCD /, "")}
+                {c.label} · {c.society.replace(/^UCD /, "")}
                 {c.status === "inactive" ? " (frozen)" : ""}
               </option>
             ))}
           </select>
           <p className="mt-1 text-xs text-ink-3">
-            {fmtEur(card.remaining)} left on the event budget · per-purchase cap {fmtEur(card.cap)} · {card.eventType} event
+            {card.eventName ? (
+              <>
+                Spending for <b className="font-medium text-ink-2">{card.eventName}</b> ({card.eventType}) · {fmtEur(card.remaining)} left on its budget
+              </>
+            ) : (
+              <>General spending · {fmtEur(Math.max(0, card.remaining))} unallocated</>
+            )}{" "}
+            · cap {fmtEur(card.cap)} a purchase · {fmtEur(Math.max(0, card.monthLeft))} left this month
           </p>
         </div>
 

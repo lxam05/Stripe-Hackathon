@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createEventWithCard, budgetWarning } from "@/lib/events";
+import { createEvent, budgetWarning } from "@/lib/events";
 import { apiError, handleError, readJson } from "@/lib/api";
 import { getActor, actorLabel } from "@/lib/session";
 import type { EventType } from "@/lib/mcc";
@@ -11,18 +11,17 @@ interface Body {
   end_date: string;
   expected_attendees: number;
   budget_cents: number;
-  per_auth_cap_cents: number;
-  cardholder_id: string;
+  card_ids?: string[];
   notes?: string;
 }
 
-/** POST /api/events — create an event and issue its virtual card (PRD M4). */
+/** POST /api/events — create an event budget and point officer cards at it. */
 export async function POST(req: Request) {
   const actor = await getActor();
   if (actor?.kind !== "member" || actor.role !== "treasurer") return apiError(403, "forbidden", "Only the treasurer can create events.");
   try {
     const b = await readJson<Body>(req);
-    const res = await createEventWithCard(
+    const res = createEvent(
       {
         societyId: actor.societyId,
         name: String(b.name ?? ""),
@@ -31,16 +30,12 @@ export async function POST(req: Request) {
         endDate: String(b.end_date ?? ""),
         expectedAttendees: Number(b.expected_attendees ?? 0),
         budgetCents: Number(b.budget_cents),
-        perAuthCapCents: Number(b.per_auth_cap_cents),
-        cardholderId: String(b.cardholder_id ?? ""),
+        cardIds: Array.isArray(b.card_ids) ? b.card_ids.map(String) : [],
         notes: b.notes,
       },
       actorLabel(actor),
     );
-    return NextResponse.json(
-      { event_id: res.eventId, card_id: res.cardId, card_issued: res.issued.ok, card_error: res.issued.ok ? null : res.issued.error },
-      { status: 201 },
-    );
+    return NextResponse.json({ event_id: res.eventId }, { status: 201 });
   } catch (e) {
     return handleError(e);
   }

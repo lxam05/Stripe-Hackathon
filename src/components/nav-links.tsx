@@ -12,11 +12,13 @@ import {
   Receipt,
   ShieldAlert,
   BadgeCheck,
+  WalletCards,
 } from "lucide-react";
 import { cx } from "./ui";
 
 const ICONS = {
   dashboard: LayoutDashboard,
+  cards: WalletCards,
   events: CalendarDays,
   review: ShieldAlert,
   transactions: Receipt,

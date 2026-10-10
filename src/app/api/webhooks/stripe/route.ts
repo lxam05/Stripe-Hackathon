@@ -4,6 +4,7 @@ import { captureAuthorization, decideAuthorization, releaseAuthorization } from 
 import { enqueueAssessment } from "@/lib/assess";
 import { getDb, newId, nowIso } from "@/lib/db";
 import { env } from "@/lib/env";
+import { suspendPlanCards } from "@/lib/cards";
 import { mccInfo } from "@/lib/mcc";
 import { activatePlan, activatePlanFromSession, fulfilTopUp } from "@/lib/payments";
 import { postEntry } from "@/lib/ledger";
@@ -75,7 +76,7 @@ export async function POST(req: Request) {
         const line = inv.lines?.data?.[0];
         const societyId = (line?.metadata?.society_id as string | undefined) ?? (inv.parent?.subscription_details?.metadata?.society_id as string | undefined);
         if (societyId) {
-          activatePlan(societyId, {
+          await activatePlan(societyId, {
             customerId: typeof inv.customer === "string" ? inv.customer : (inv.customer?.id ?? null),
             subscriptionId: (inv.parent?.subscription_details?.subscription as string | undefined) ?? null,
             renewsAt: line?.period?.end ? new Date(line.period.end * 1000).toISOString() : null,
@@ -88,6 +89,8 @@ export async function POST(req: Request) {
       case "customer.subscription.deleted": {
         const sub = event.data.object as Stripe.Subscription;
         db.prepare(`UPDATE society SET plan_status='expired' WHERE stripe_subscription_id=?`).run(sub.id);
+        const soc = db.prepare(`SELECT id FROM society WHERE stripe_subscription_id=?`).get(sub.id) as { id: string } | undefined;
+        if (soc) await suspendPlanCards(soc.id, "webhook");
         break;
       }
       case "issuing_authorization.created": {
@@ -110,7 +113,7 @@ export async function POST(req: Request) {
         const authId = typeof txn.authorization === "string" ? txn.authorization : txn.authorization?.id;
         const known = authId
           ? (db.prepare(`SELECT id, society_id, event_id FROM authorization WHERE stripe_auth_id=?`).get(authId) as
-              | { id: string; society_id: string; event_id: string }
+              | { id: string; society_id: string; event_id: string | null }
               | undefined)
           : undefined;
         if (!known) break;
@@ -140,8 +143,8 @@ export async function POST(req: Request) {
 function recordNetworkDecline(auth: Stripe.Issuing.Authorization) {
   const db = getDb();
   const card = db
-    .prepare(`SELECT c.id, c.member_id, e.id event_id, e.society_id FROM card c JOIN event e ON e.id=c.event_id WHERE c.stripe_card_id=?`)
-    .get(auth.card.id) as { id: string; member_id: string; event_id: string; society_id: string } | undefined;
+    .prepare(`SELECT id, member_id, event_id, society_id FROM card WHERE stripe_card_id=?`)
+    .get(auth.card.id) as { id: string; member_id: string; event_id: string | null; society_id: string } | undefined;
   if (!card) return;
   const reason = auth.request_history?.[0]?.reason ?? "spending_controls";
   const mcc = auth.merchant_data.category_code;

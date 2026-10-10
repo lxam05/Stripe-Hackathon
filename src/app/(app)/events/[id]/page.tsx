@@ -2,15 +2,15 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ArrowLeft, CreditCard } from "lucide-react";
 import { BudgetBar } from "@/components/budget-bar";
-import { CardActions } from "@/components/card-actions";
+import { CloseEventButton, EventCards } from "@/components/event-actions";
 import { TxnList } from "@/components/txn-list";
 import { AutoRefresh } from "@/components/auto-refresh";
-import { CardStatusPill, Notice, PageHeader, Panel, SectionTitle, button } from "@/components/ui";
-import { VirtualCard } from "@/components/virtual-card";
+import { Notice, PageHeader, Panel, SectionTitle, button } from "@/components/ui";
+import { EventCover } from "@/components/virtual-card";
 import { requireActor } from "@/lib/guard";
 import { EVENT_TYPES } from "@/lib/mcc";
 import { addDays, fmtDate, fmtEur } from "@/lib/money";
-import { getEvent, getSociety, listTransactions } from "@/lib/queries";
+import { getEvent, getSociety, listCards, listTransactions } from "@/lib/queries";
 import { canManage } from "@/lib/session";
 
 export async function generateMetadata({ params }: PageProps<"/events/[id]">) {
@@ -26,22 +26,27 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
   if (!e || (actor.kind === "member" && actor.societyId !== e.society_id)) notFound();
   const soc = getSociety(e.society_id)!;
   const txns = listTransactions({ eventId: e.id, limit: 100 });
-  const card = e.card;
   const pendingJev = txns.some((t) => t.ra_status === "pending");
+  const typeLabel = EVENT_TYPES.find((t) => t.value === e.type)?.label ?? e.type;
+  const open = e.status === "open";
+  const editable = open && canManage(actor);
+  const societyCards = listCards({ societyId: e.society_id, usable: true });
+  const onEvent = e.cards.filter((c) => c.status === "active" || c.status === "inactive");
+  const simCard = onEvent.find((c) => c.status === "active");
 
   return (
     <>
       <AutoRefresh active={pendingJev} />
       <PageHeader
-        eyebrow={`${soc.name} · ${EVENT_TYPES.find((t) => t.value === e.type)?.label}`}
+        eyebrow={`${soc.name} · ${typeLabel}`}
         title={e.name}
         actions={
           <>
             <Link href="/events" className={button("ghost")}>
               <ArrowLeft className="h-4 w-4" /> Events
             </Link>
-            {e.status === "open" && card?.status === "active" && (
-              <Link href={`/simulator?card=${card.id}`} className={button("secondary")}>
+            {open && simCard && (
+              <Link href={`/simulator?card=${simCard.id}`} className={button("secondary")}>
                 <CreditCard className="h-4 w-4" /> Simulate a purchase
               </Link>
             )}
@@ -49,55 +54,56 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
         }
       >
         {fmtDate(e.start_date)}
-        {e.end_date !== e.start_date && <> → {fmtDate(e.end_date)}</>} · {e.expected_attendees} expected · {e.status === "open" ? "Open" : "Closed"}
+        {e.end_date !== e.start_date && <> → {fmtDate(e.end_date)}</>} · {e.expected_attendees} expected · {open ? "Open" : "Closed"}
       </PageHeader>
 
-      {sp.created && card?.status === "active" && (
+      {sp.created && (
         <div className="mb-6">
-          <Notice tone="ok" title={`Card issued to ${card.holder_name}`}>
-            Ending {card.last4}. It works for this event only, up to {fmtEur(e.budget_cents)}.
-          </Notice>
-        </div>
-      )}
-      {card?.status === "pending" && (
-        <div className="mb-6">
-          <Notice tone="warn" title="The event is saved but the card isn't issued yet">
-            {card.error ?? "The card network didn't respond."} Use “Retry issuing” below. Nothing has been charged.
-          </Notice>
-        </div>
-      )}
-      {card?.status === "inactive" && card.status_reason && (
-        <div className="mb-6">
-          <Notice tone="info" title="Card frozen">
-            {card.status_reason}
-          </Notice>
+          {onEvent.length ? (
+            <Notice tone="ok" title="Event created">
+              {onEvent.map((c) => `${c.holder_name}'s card`).join(" and ")} now {onEvent.length === 1 ? "spends" : "spend"} from this {fmtEur(e.budget_cents)} budget.
+            </Notice>
+          ) : (
+            <Notice tone="info" title="Event created">
+              No officer card is spending for it yet. Switch one on below.
+            </Notice>
+          )}
         </div>
       )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,380px)_1fr]">
         <div className="space-y-4">
-          {card && (
-            <VirtualCard eventName={e.name} eventType={e.type} societyName={soc.name} holder={card.holder_name ?? ""} last4={card.last4} expMonth={card.exp_month} expYear={card.exp_year} status={card.status} network={card.network} />
-          )}
-          {card && (
-            <CardActions cardId={card.id} eventId={e.id} cardStatus={card.status} eventStatus={e.status} canManage={canManage(actor)} />
-          )}
+          <EventCover name={e.name} type={e.type} typeLabel={typeLabel} size="md" />
+          <Panel>
+            <SectionTitle aside={open ? `${onEvent.length} on this event` : undefined}>Officer cards</SectionTitle>
+            {open ? (
+              <EventCards eventId={e.id} cards={societyCards} editable={editable} />
+            ) : (
+              <p className="text-sm text-ink-3">The event is closed. Its cards went back to general spending.</p>
+            )}
+            {editable && (
+              <p className="mt-3 text-xs text-ink-3">
+                A card spends for one event at a time. Manage limits on <Link href="/cards" className="underline hover:text-ink">Officer cards</Link>.
+              </p>
+            )}
+          </Panel>
           <Panel>
             <dl className="grid grid-cols-2 gap-y-3 text-sm">
-              <dt className="text-ink-3">Card</dt>
-              <dd className="text-right">{card ? <CardStatusPill status={card.status} /> : "—"}</dd>
-              <dt className="text-ink-3">Cardholder</dt>
-              <dd className="text-right">{card?.holder_name}</dd>
-              <dt className="text-ink-3">Per-purchase cap</dt>
-              <dd className="text-right tabular">{card ? fmtEur(card.per_auth_cap_cents) : "—"}</dd>
-              <dt className="text-ink-3">Valid</dt>
+              <dt className="text-ink-3">Spending window</dt>
               <dd className="text-right tabular">
                 {fmtDate(addDays(e.start_date, -14))} → {fmtDate(addDays(e.end_date, 3))}
               </dd>
-              <dt className="text-ink-3">Network</dt>
-              <dd className="text-right">{card?.network === "stripe" ? "Stripe Issuing (sandbox)" : "Simulated (MockAdapter)"}</dd>
+              <dt className="text-ink-3">Budget</dt>
+              <dd className="text-right tabular">{fmtEur(e.budget_cents)}</dd>
+              <dt className="text-ink-3">Expected</dt>
+              <dd className="text-right tabular">{e.expected_attendees} people</dd>
             </dl>
             {e.notes && <p className="mt-4 border-t border-line pt-3 text-sm text-ink-2">“{e.notes}”</p>}
+            {editable && (
+              <div className="mt-4 border-t border-line pt-3">
+                <CloseEventButton eventId={e.id} />
+              </div>
+            )}
           </Panel>
         </div>
 
@@ -113,7 +119,7 @@ export default async function EventPage({ params, searchParams }: PageProps<"/ev
             <div className="px-5 pb-1 pt-5">
               <SectionTitle aside={`${txns.length} purchase${txns.length === 1 ? "" : "s"}`}>Purchases</SectionTitle>
             </div>
-            <TxnList rows={txns} showEvent={false} empty="No purchases on this card yet. Try the purchase simulator." />
+            <TxnList rows={txns} showEvent={false} empty="No purchases for this event yet. Try the purchase simulator." />
           </Panel>
         </div>
       </div>

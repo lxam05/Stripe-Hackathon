@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { UserError } from "./payments";
+import { UserError } from "./errors";
 
 /** Consistent error envelope (PRD §13.4): { error: { code, message, details? } } */
 export function apiError(status: number, code: string, message: string, details?: unknown) {

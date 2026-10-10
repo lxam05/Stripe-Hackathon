@@ -44,7 +44,7 @@ export default async function PlanPage({ searchParams }: PageProps<"/plan">) {
       )}
       {active && (sp.activated || sp.session_id) && (
         <div className="mb-6">
-          <Notice tone="ok" title="You're subscribed. Card issuing is unlocked.">
+          <Notice tone="ok" title="You're subscribed. Your officer cards are live.">
             {stripeEnabled() ? "Stripe confirmed the first payment" : "Simulated checkout completed"}; the plan is active until {fmtDate(soc.plan_renews_at!)}.
           </Notice>
         </div>
@@ -102,7 +102,7 @@ export default async function PlanPage({ searchParams }: PageProps<"/plan">) {
             <div className="mt-4 flex items-center gap-3 rounded-xl bg-paper-2 p-3 text-sm">
               <Image src="/art/persona-treasurer.webp" alt="" width={40} height={40} className="h-10 w-10 rounded-lg" />
               <span className="text-ink-2">
-                <b className="font-medium text-ink">€49 ≈ €4 a month</b>, or about €5 an event for a society running ~10 events a year.
+                <b className="font-medium text-ink">€49 ≈ €4 a month</b>, or under €10 a year for each of your five officer cards.
               </span>
             </div>
           </Panel>
