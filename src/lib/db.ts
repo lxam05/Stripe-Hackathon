@@ -51,7 +51,7 @@ CREATE TABLE IF NOT EXISTS card (
   society_id TEXT NOT NULL REFERENCES society(id),
   member_id TEXT NOT NULL REFERENCES member(id),
   event_id TEXT REFERENCES event(id),
-  network TEXT NOT NULL,                             -- mock | stripe
+  network TEXT NOT NULL,                             -- stripe (test double only in disposable tests)
   stripe_card_id TEXT UNIQUE,
   last4 TEXT NOT NULL,
   exp_month INTEGER NOT NULL,

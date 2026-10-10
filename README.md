@@ -19,9 +19,8 @@ JEV runs TypeSafe's Jev decision model through OpenRouter's Decisions API after 
 | --- | --- |
 | `OPENROUTER_API_KEY` + `JEV_MODEL` | JEV purchase analysis and evaluation |
 | `GRANT_DRAFT_MODEL` | Optional OpenRouter chat model for report prose; without it reports use a labelled template |
-| `STRIPE_SECRET_KEY` | Sandbox Checkout; live keys are rejected |
+| `STRIPE_SECRET_KEY` | Sandbox Checkout and required Stripe Issuing card creation; live keys are rejected |
 | `STRIPE_WEBHOOK_SECRET` | Signature-verified Stripe webhooks |
-| `ISSUING_MODE=stripe` | Sandbox Stripe Issuing instead of the local adapter: seeding issues every officer a real virtual card |
 
 ```sh
 npm run typecheck
@@ -30,7 +29,7 @@ npm test
 npm run build
 ```
 
-Tests use a separate disposable database and a local OpenRouter stub; they never reset your app database. A few existing failure-path tests call external APIs with deliberately invalid test credentials. The sandbox must allow local sockets for the stub. `npm run seed` explicitly resets the app demo data; normal startup uses additive migrations and preserves existing records.
+Tests use a separate disposable database and never reset your app database. `npm run seed` explicitly resets the app to Drama Society with no cards. The first run after upgrading from the old multi-society fixture performs that same one-time cleanup.
 
 ## Who sees what
 
@@ -51,17 +50,12 @@ Rules live in `src/lib/access.ts` and are enforced on every page and API route, 
 
 ## Main demo
 
-- Run `npm run demo:prepare` to reset the showcase fixture and verify that Cian's €149.99 GameStop purchase has a completed, real JEV assessment and an open review. The command fails clearly if OpenRouter falls back to rules or JEV does not escalate it.
-- Top up Drama by €250, then use the success-page action to continue as Aoife.
-- Issue Orla the fifth officer card with a €200 per-purchase limit, €500 monthly limit and Standard society spending profile.
-- Use “Try this card” to buy the €18.40 pizza in the two-item Campus marketplace; its receipt shows the exact balance movement and Orla's card attribution.
-- Return to Aoife's dashboard and open Cian's GameStop payment to show JEV's contextual risk review.
-- Choose Jamie (member) to submit a receipt-backed claim. Alex (auditor) has a fictional €1,000 approved claim awaiting repayment.
-- The treasurer approves/declines expenses and records repayment made externally. “Mark repaid” does not send money.
-- Choose Evelyn (senior treasurer) to edit the annual report and forecast; submit to Council.
-- Choose Council to create societies, assign required/optional leadership, review reports, record interview notes and approve grant amounts.
-- Societies without a senior treasurer use their treasurer as reporting owner.
-- Use the simulator for broader policy, recurring-payment and failure-path cases.
+- Run `npm run demo:prepare` to reset the app to UCD Drama Society with a €0 balance and zero cards.
+- Top up Drama, then use the success-page action to continue as Aoife.
+- Open Cards and issue an officer card. Balance creates the cardholder/card in Stripe Issuing; no demo card is substituted if Stripe is unavailable.
+- Set the per-purchase limit, monthly limit and merchant profile during issuance.
+- Use “Try this card” to open the Campus marketplace with that real Stripe sandbox card selected.
+- Purchases, authorizations and card status changes reconcile through Stripe webhooks.
 
 ## Important behavior
 
@@ -77,11 +71,12 @@ Every card has a human-readable merchant profile: Standard society spending, Eve
 
 Stripe uses a signature-verified endpoint at `/api/webhooks/stripe`. Webhooks are required for billing and asynchronous checkout: configure completed/async-success/failure, invoice paid/payment-failed, subscription lifecycle and Issuing events. Never substitute the success page for webhook fulfilment. Run `npm run stripe:listen` (it forwards exactly the events the endpoint handles, using `STRIPE_SECRET_KEY`) and put the `whsec_…` it prints into `STRIPE_WEBHOOK_SECRET`.
 
-Stripe Issuing demo (`ISSUING_MODE=stripe`):
+Stripe Issuing demo:
 
-1. `npm run seed`: backs seeded officer cards with Stripe cardholders and virtual cards, leaves Drama's fifth slot open for Orla, cancels cards from earlier seeds, and tops up the sandbox Issuing balance. Cardholders are people, not cards: reseeding and replacement cards reuse the same `ich_…`.
-2. `npm run stripe:listen` in a second terminal.
-3. `npm run dev`. The purchase simulator fires real sandbox authorisations through Stripe test helpers, and the webhook approves or declines them in real time. The time override still applies.
+1. Enable Issuing in the Stripe sandbox and set `STRIPE_SECRET_KEY`.
+2. Run `npm run seed` to create only Drama Society with zero cards. For an upgrade from the old fixture, `npm run stripe:clean-demo-cards` cancels the legacy seeded cards in Stripe.
+3. Run `npm run stripe:listen` in a second terminal and set the printed webhook secret.
+4. Run `npm run dev`, continue as Aoife, and issue cards from the Cards page. Only cards tagged as created by Balance are synchronized back into the society.
 
 This project rejects live Stripe keys. Real Issuing eligibility, funding, consent, tax/VAT registrations and institutional approval remain launch work; Checkout receipts are not proof of available Issuing funds.
 

@@ -1,9 +1,10 @@
+import type Stripe from "stripe";
 import { env } from "./env";
 import { audit, getDb, newId, nowIso } from "./db";
 import { dublinParts, dublinToIso, fmtEur } from "./money";
 import { UserError } from "./errors";
 import { globalBlockedMccs } from "./policy";
-import { CARDS_PER_SOCIETY, MAX_MONTHLY_LIMIT_CENTS, ROLE_LABEL } from "./roles";
+import { CARDS_PER_SOCIETY, defaultLimits, MAX_MONTHLY_LIMIT_CENTS, ROLE_LABEL } from "./roles";
 import { getStripe } from "./stripe";
 import {
   isCardRestrictionProfile,
@@ -15,9 +16,9 @@ import {
 // member. A card can point at one open event at a time; purchases then come out of that
 // event's budget. Unassigned cards spend from the society's unallocated money.
 //
-// CardNetworkAdapter (PRD §13.2). MockAdapter produces the same card objects and
-// authorisation events locally, so the risk / ledger / JEV demo works even if
-// Stripe Issuing isn't enabled on the sandbox account.
+// Stripe Issuing is the card system of record. The database contains a local
+// projection for authorization, ledger and ownership checks; it never invents
+// card details for the product UI.
 
 export type CardStatus = "pending" | "active" | "inactive" | "canceled";
 
@@ -31,6 +32,7 @@ interface MemberRow {
 }
 
 interface IssueParams {
+  localCardId: string;
   memberId: string;
   role: string;
   societyId: string;
@@ -39,31 +41,18 @@ interface IssueParams {
   restrictionProfile: CardRestrictionProfile;
 }
 
-interface CardNetwork {
-  name: "mock" | "stripe";
+export interface CardNetwork {
+  name: "stripe" | "test";
   ensureCardholder(m: MemberRow): Promise<string>;
   createCard(cardholderId: string, p: IssueParams): Promise<{ id: string; last4: string; expMonth: number; expYear: number }>;
   setStatus(stripeCardId: string | null, status: Exclude<CardStatus, "pending">): Promise<void>;
   setControls(stripeCardId: string | null, p: Pick<IssueParams, "perAuthCapCents" | "monthlyLimitCents" | "restrictionProfile">): Promise<void>;
 }
 
-const mockNetwork: CardNetwork = {
-  name: "mock",
-  async ensureCardholder(m) {
-    return m.stripe_cardholder_id ?? `mock_ich_${m.id}`;
-  },
-  async createCard() {
-    const last4 = String(Math.floor(1000 + Math.random() * 9000));
-    const d = new Date();
-    return { id: newId("mock_ic"), last4, expMonth: d.getMonth() + 1, expYear: d.getFullYear() + 3 };
-  },
-  async setStatus() {},
-  async setControls() {},
-};
-
 // EU cards need a phone on the cardholder for 3-D Secure; members don't store one, so the
 // sandbox uses the UCD switchboard.
 const SANDBOX_CARDHOLDER_PHONE = "+35317167777";
+const SITE_CARD_ORIGIN = "balance_site";
 
 export function stripeSpendingControls(p: { perAuthCapCents: number; monthlyLimitCents: number; restrictionProfile: CardRestrictionProfile }) {
   return {
@@ -77,9 +66,9 @@ export function stripeSpendingControls(p: { perAuthCapCents: number; monthlyLimi
 
 const stripeNetwork: CardNetwork = {
   name: "stripe",
-  // One cardholder per person: every card (new, replacement, reseeded) reuses it.
+  // One cardholder per person: new and replacement cards reuse it.
   async ensureCardholder(m) {
-    if (m.stripe_cardholder_id && !m.stripe_cardholder_id.startsWith("mock_")) return m.stripe_cardholder_id;
+    if (m.stripe_cardholder_id) return m.stripe_cardholder_id;
     const existing = (await getStripe().issuing.cardholders.list({ email: m.email, status: "active", limit: 10 })).data.find(
       (c) => c.metadata?.member_id === m.id,
     );
@@ -99,7 +88,7 @@ const stripeNetwork: CardNetwork = {
         last_name: rest.join(" ") || "Member",
         card_issuing: { user_terms_acceptance: { date: Math.floor(Date.now() / 1000), ip: "127.0.0.1" } },
       },
-      metadata: { member_id: m.id, balance_env: "sandbox" },
+      metadata: { member_id: m.id, balance_origin: SITE_CARD_ORIGIN },
     });
     return ch.id;
   },
@@ -110,7 +99,14 @@ const stripeNetwork: CardNetwork = {
       type: "virtual",
       status: "active",
       spending_controls: stripeSpendingControls(p),
-      metadata: { society_id: p.societyId, member_id: p.memberId, role: p.role, balance_env: "sandbox" },
+      metadata: {
+        balance_origin: SITE_CARD_ORIGIN,
+        local_card_id: p.localCardId,
+        society_id: p.societyId,
+        member_id: p.memberId,
+        role: p.role,
+        restriction_profile: p.restrictionProfile,
+      },
     });
     return { id: card.id, last4: card.last4, expMonth: card.exp_month, expYear: card.exp_year };
   },
@@ -122,78 +118,103 @@ const stripeNetwork: CardNetwork = {
     if (!stripeCardId) return;
     await getStripe().issuing.cards.update(stripeCardId, {
       spending_controls: stripeSpendingControls(p),
+      metadata: { restriction_profile: p.restrictionProfile },
     });
   },
 };
 
-export const cardNetwork = (): CardNetwork => (env.issuingMode === "stripe" ? stripeNetwork : mockNetwork);
+let testNetwork: CardNetwork | null = null;
 
-const ISSUING_FLOAT_CENTS = 2_000_000;
-
-/**
- * Seeded cards are written as mock rows; in Stripe mode give each one a real sandbox card
- * (reusing the officer's cardholder), cancel cards left over from earlier seeds, and keep the
- * sandbox Issuing balance funded so demo purchases aren't declined for insufficient funds.
- * Failures are logged and leave the card on the mock network rather than failing the seed.
- */
-export async function syncSeededCardsToStripe(log: (s: string) => void = () => {}) {
-  if (env.issuingMode !== "stripe") return;
-  const db = getDb();
-  const s = getStripe();
-  try {
-    const bal = await s.balance.retrieve();
-    const eur = bal.issuing?.available.find((b) => b.currency === "eur")?.amount ?? 0;
-    if (eur < ISSUING_FLOAT_CENTS) {
-      await s.rawRequest("POST", "/v1/test_helpers/issuing/fund_balance", { amount: 5_000_000, currency: "eur" });
-      log(`funded sandbox Issuing balance (was ${fmtEur(eur)})`);
-    }
-  } catch (err) {
-    log(`could not fund Issuing balance: ${err instanceof Error ? err.message : err}`);
-  }
-
-  const known = new Set(
-    (db.prepare(`SELECT stripe_card_id FROM card WHERE network='stripe' AND stripe_card_id IS NOT NULL`).all() as { stripe_card_id: string }[]).map(
-      (r) => r.stripe_card_id,
-    ),
-  );
-  const stale: string[] = [];
-  for (const status of ["active", "inactive"] as const) {
-    for await (const c of s.issuing.cards.list({ status, limit: 100 })) {
-      if (c.metadata?.balance_env === "sandbox" && !known.has(c.id)) stale.push(c.id);
-    }
-  }
-  await inBatches(stale, (id) => s.issuing.cards.update(id, { status: "canceled" }).then(() => undefined));
-  if (stale.length) log(`cancelled ${stale.length} Stripe cards from earlier seeds`);
-
-  const rows = db
-    .prepare(`SELECT id, society_id, member_id, status, per_auth_cap_cents, monthly_limit_cents, restriction_profile FROM card WHERE network='mock' AND status != 'canceled'`)
-    .all() as (Pick<CardRecord, "id" | "society_id" | "member_id" | "status" | "per_auth_cap_cents" | "monthly_limit_cents" | "restriction_profile">)[];
-  let issued = 0;
-  await inBatches(rows, async (row) => {
-    try {
-      const member = db.prepare(`SELECT * FROM member WHERE id=?`).get(row.member_id) as MemberRow;
-      const chId = await stripeNetwork.ensureCardholder(member);
-      db.prepare(`UPDATE member SET stripe_cardholder_id=?, cardholder_created_at=COALESCE(cardholder_created_at, ?) WHERE id=?`).run(chId, nowIso(), member.id);
-      const c = await stripeNetwork.createCard(chId, {
-        memberId: member.id,
-        role: member.role,
-        societyId: row.society_id,
-        perAuthCapCents: row.per_auth_cap_cents,
-        monthlyLimitCents: row.monthly_limit_cents,
-        restrictionProfile: row.restriction_profile,
-      });
-      if (row.status === "inactive") await stripeNetwork.setStatus(c.id, "inactive");
-      db.prepare(`UPDATE card SET network='stripe', stripe_card_id=?, last4=?, exp_month=?, exp_year=? WHERE id=?`).run(c.id, c.last4, c.expMonth, c.expYear, row.id);
-      issued++;
-    } catch (err) {
-      log(`card ${row.id} stays simulated: ${err instanceof Error ? err.message : err}`);
-    }
-  });
-  log(`issued ${issued}/${rows.length} seeded cards on Stripe Issuing`);
+/** Test-only dependency injection; production can never select a mock adapter. */
+export function setCardNetworkForTests(network: CardNetwork | null) {
+  if (process.env.BALANCE_TEST_MODE !== "1") throw new Error("Card network overrides are test-only.");
+  testNetwork = network;
 }
 
-async function inBatches<T>(items: T[], fn: (item: T) => Promise<void>, size = 5) {
-  for (let i = 0; i < items.length; i += size) await Promise.all(items.slice(i, i + size).map(fn));
+export const cardNetwork = (): CardNetwork => {
+  if (testNetwork) return testNetwork;
+  if (!env.stripeSecretKey) {
+    throw new UserError("stripe_required", "Stripe Issuing is required to create or manage cards. Add a sandbox STRIPE_SECRET_KEY.", 503);
+  }
+  return stripeNetwork;
+};
+
+function cardholderId(cardholder: string | Stripe.Issuing.Cardholder) {
+  return typeof cardholder === "string" ? cardholder : cardholder.id;
+}
+
+function remoteLimits(card: Stripe.Issuing.Card, role: string) {
+  const fallback = defaultLimits(role);
+  const limits = card.spending_controls?.spending_limits ?? [];
+  return {
+    perAuthCapCents: limits.find((limit) => limit.interval === "per_authorization")?.amount ?? fallback.perAuthCapCents,
+    monthlyLimitCents: limits.find((limit) => limit.interval === "monthly")?.amount ?? fallback.monthlyLimitCents,
+  };
+}
+
+/** Refresh the local projection from cards created by this site in Stripe. */
+export async function syncSocietyCardsFromStripe(societyId: string) {
+  if (!env.stripeSecretKey) throw new UserError("stripe_required", "Stripe Issuing is not configured.", 503);
+  const db = getDb();
+  const remote: Stripe.Issuing.Card[] = [];
+  for await (const card of getStripe().issuing.cards.list({ limit: 100 })) {
+    if (card.metadata?.balance_origin === SITE_CARD_ORIGIN && card.metadata?.society_id === societyId) remote.push(card);
+  }
+
+  const seen = new Set<string>();
+  const upsert = db.transaction((cards: Stripe.Issuing.Card[]) => {
+    for (const card of cards) {
+      const memberId = card.metadata?.member_id;
+      if (!memberId) continue;
+      const member = db.prepare(`SELECT id, role FROM member WHERE id=? AND society_id=?`).get(memberId, societyId) as
+        | { id: string; role: string }
+        | undefined;
+      if (!member) continue;
+      const localId = card.metadata?.local_card_id || `card_${card.id}`;
+      const local = db.prepare(`SELECT id FROM card WHERE stripe_card_id=? OR id=?`).get(card.id, localId) as { id: string } | undefined;
+      const profile = isCardRestrictionProfile(card.metadata?.restriction_profile) ? card.metadata.restriction_profile : "standard";
+      const limits = remoteLimits(card, member.role);
+      if (local) {
+        db.prepare(
+          `UPDATE card SET network='stripe', stripe_card_id=?, last4=?, exp_month=?, exp_year=?, status=?,
+             per_auth_cap_cents=?, monthly_limit_cents=?, restriction_profile=?, error=NULL WHERE id=?`,
+        ).run(card.id, card.last4, card.exp_month, card.exp_year, card.status, limits.perAuthCapCents, limits.monthlyLimitCents, profile, local.id);
+      } else {
+        db.prepare(
+          `INSERT INTO card (id, society_id, member_id, event_id, network, stripe_card_id, last4, exp_month, exp_year, status,
+             per_auth_cap_cents, monthly_limit_cents, restriction_profile, created_at)
+           VALUES (?,?,?,NULL,'stripe',?,?,?,?,?,?,?,?,?)`,
+        ).run(localId, societyId, memberId, card.id, card.last4, card.exp_month, card.exp_year, card.status, limits.perAuthCapCents, limits.monthlyLimitCents, profile, new Date(card.created * 1000).toISOString());
+      }
+      db.prepare(`UPDATE member SET stripe_cardholder_id=?, cardholder_created_at=COALESCE(cardholder_created_at, ?) WHERE id=?`).run(
+        cardholderId(card.cardholder),
+        new Date(card.created * 1000).toISOString(),
+        memberId,
+      );
+      seen.add(card.id);
+    }
+  });
+  upsert(remote);
+
+  const localStripe = db.prepare(`SELECT id,stripe_card_id FROM card WHERE society_id=? AND network='stripe' AND stripe_card_id IS NOT NULL`).all(societyId) as
+    { id: string; stripe_card_id: string }[];
+  for (const card of localStripe) {
+    if (!seen.has(card.stripe_card_id)) {
+      db.prepare(`UPDATE card SET status='canceled', status_reason='Not a card created through Balance' WHERE id=?`).run(card.id);
+    }
+  }
+  return { cards: remote.length };
+}
+
+/** Cancel legacy cards produced by the old seed-to-Stripe migration. */
+export async function cancelLegacySeededStripeCards() {
+  if (!env.stripeSecretKey) throw new UserError("stripe_required", "Stripe Issuing is not configured.", 503);
+  const ids: string[] = [];
+  for await (const card of getStripe().issuing.cards.list({ limit: 100 })) {
+    if (card.status !== "canceled" && card.metadata?.balance_env === "sandbox" && card.metadata?.balance_origin !== SITE_CARD_ORIGIN) ids.push(card.id);
+  }
+  for (const id of ids) await getStripe().issuing.cards.update(id, { status: "canceled" });
+  return ids.length;
 }
 
 interface CardRecord {
@@ -258,8 +279,8 @@ export async function issueCard(cardId: string, actor: string) {
   const pending = getCard(cardId);
   if (pending.status !== "pending") throw new UserError("conflict", "Only a pending card can be issued.", 409);
   const member = db.prepare(`SELECT * FROM member WHERE id=?`).get(pending.member_id) as MemberRow;
-  const net = cardNetwork();
   try {
+    const net = cardNetwork();
     const chId = await net.ensureCardholder(member);
     if (!member.stripe_cardholder_id || member.stripe_cardholder_id !== chId) {
       db.prepare(`UPDATE member SET stripe_cardholder_id=?, cardholder_created_at=COALESCE(cardholder_created_at, ?) WHERE id=?`).run(
@@ -269,6 +290,7 @@ export async function issueCard(cardId: string, actor: string) {
       );
     }
     const c = await net.createCard(chId, {
+      localCardId: cardId,
       memberId: member.id,
       role: member.role,
       societyId: pending.society_id,
@@ -324,7 +346,7 @@ export async function createOfficerCard(input: NewCardInput, actor: string) {
     db.prepare(
       `INSERT INTO card (id, society_id, member_id, event_id, network, last4, exp_month, exp_year, status, per_auth_cap_cents, monthly_limit_cents, restriction_profile, created_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    ).run(cardId, input.societyId, member.id, input.eventId ?? null, "mock", "····", 0, 0, "pending", input.perAuthCapCents, input.monthlyLimitCents, restrictionProfile, nowIso());
+    ).run(cardId, input.societyId, member.id, input.eventId ?? null, "stripe", "····", 0, 0, "pending", input.perAuthCapCents, input.monthlyLimitCents, restrictionProfile, nowIso());
   }).immediate();
   audit(actor, "card.created", cardId, { member_id: member.id, role: ROLE_LABEL[member.role] ?? member.role });
   const issued = await issueCard(cardId, actor);
@@ -360,7 +382,7 @@ export async function updateCardLimits(
   if (!isCardRestrictionProfile(profile)) throw new UserError("validation", "Choose a valid card spending profile.");
   if (card.status === "canceled") throw new UserError("validation", "This card is cancelled.");
   if (card.network === "stripe") {
-    await stripeNetwork.setControls(card.stripe_card_id, { perAuthCapCents, monthlyLimitCents, restrictionProfile: profile });
+    await cardNetwork().setControls(card.stripe_card_id, { perAuthCapCents, monthlyLimitCents, restrictionProfile: profile });
   }
   getDb().prepare(`UPDATE card SET per_auth_cap_cents=?, monthly_limit_cents=?, restriction_profile=? WHERE id=?`).run(
     perAuthCapCents,
@@ -406,7 +428,7 @@ export async function setCardStatus(cardId: string, status: Exclude<CardStatus, 
     const soc = db.prepare(`SELECT plan_status FROM society WHERE id=?`).get(card.society_id) as { plan_status: string };
     if (soc.plan_status !== "active") throw new UserError("plan_required", "Renew the Society Plan to use your officer cards again.", 402);
   }
-  if (card.network === "stripe") await stripeNetwork.setStatus(card.stripe_card_id, status);
+  if (card.network === "stripe") await cardNetwork().setStatus(card.stripe_card_id, status);
   db.prepare(`UPDATE card SET status=?, status_reason=? WHERE id=?`).run(status, reason, cardId);
   audit(actor, `card.${status === "active" ? "unfrozen" : status === "inactive" ? "frozen" : "canceled"}`, cardId, { reason });
 }

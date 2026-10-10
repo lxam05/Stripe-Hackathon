@@ -1,574 +1,118 @@
 {
-  "ran_at": "2026-10-10T12:46:09.713Z",
-  "passed": 71,
-  "total": 71,
+  "generated_at": "2026-10-10T13:16:05.381Z",
+  "passed": 14,
+  "total": 14,
   "results": [
     {
-      "id": "O4",
-      "kind": "Ordinary",
-      "name": "Drama has one card slot and Orla receives it",
-      "expected": "4 active, then Orla's fifth card",
-      "actual": "4 before, issued",
+      "id": "S1",
+      "kind": "Invariant",
+      "name": "Only Drama Society is seeded",
+      "expected": "One society: UCD Drama Society",
+      "actual": "UCD Drama Society",
+      "pass": true
+    },
+    {
+      "id": "S2",
+      "kind": "Invariant",
+      "name": "No cards are seeded",
+      "expected": "0 cards",
+      "actual": "0 cards",
+      "pass": true
+    },
+    {
+      "id": "S3",
+      "kind": "Invariant",
+      "name": "No synthetic Stripe identities are seeded",
+      "expected": "0 linked members",
+      "actual": "0 linked members",
+      "pass": true
+    },
+    {
+      "id": "S4",
+      "kind": "Invariant",
+      "name": "Drama starts with no money",
+      "expected": "€0.00",
+      "actual": "€0.00",
       "pass": true
     },
     {
       "id": "C1",
+      "kind": "Ordinary",
+      "name": "A site-issued card stores its network projection",
+      "expected": "Active Stripe card",
+      "actual": "stripe/active/••9001",
+      "pass": true
+    },
+    {
+      "id": "C2",
+      "kind": "Invariant",
+      "name": "An officer can hold only one live card",
+      "expected": "Duplicate rejected",
+      "actual": "Rejected",
+      "pass": true
+    },
+    {
+      "id": "C3",
       "kind": "Boundary",
-      "name": "€200 card limit, then one cent over",
+      "name": "Per-purchase limit is hard",
       "expected": "€200 approved; €200.01 declined",
       "actual": "true/spending_controls",
       "pass": true
     },
     {
-      "id": "C2",
-      "kind": "Boundary",
-      "name": "€500 monthly limit, then one cent over",
-      "expected": "Exactly €500 approved; next cent declined",
-      "actual": "true/spending_controls",
-      "pass": true
-    },
-    {
-      "id": "C3",
-      "kind": "Invariant",
-      "name": "Event essentials is an allowlist",
-      "expected": "Food approved; games and unknown categories declined",
-      "actual": "true/blocked_card_profile/blocked_card_profile",
-      "pass": true
-    },
-    {
       "id": "C4",
-      "kind": "Invariant",
-      "name": "Trip adds travel but cannot relax global blocks",
-      "expected": "Airline approved; gambling declined by global policy",
-      "actual": "true/blocked_mcc",
+      "kind": "Boundary",
+      "name": "Monthly limit is hard",
+      "expected": "€500 approved; next cent declined",
+      "actual": "true/spending_controls",
       "pass": true
     },
     {
       "id": "C5",
       "kind": "Invariant",
-      "name": "Stripe controls mirror local limits and trip categories",
-      "expected": "€200 per authorization, €500 monthly, airlines allowed, gambling absent",
+      "name": "Event essentials is an allowlist",
+      "expected": "Pizza approved; game shop declined",
+      "actual": "true/blocked_card_profile",
+      "pass": true
+    },
+    {
+      "id": "C6",
+      "kind": "Invariant",
+      "name": "Control changes reach the card network",
+      "expected": "One network update",
+      "actual": "1 updates",
+      "pass": true
+    },
+    {
+      "id": "C7",
+      "kind": "Invariant",
+      "name": "Stripe controls mirror both hard limits",
+      "expected": "per_authorization=20000 and monthly=50000",
       "actual": "[{\"amount\":20000,\"interval\":\"per_authorization\"},{\"amount\":50000,\"interval\":\"monthly\"}]",
       "pass": true
     },
     {
-      "id": "O2",
-      "kind": "Ordinary",
-      "name": "Sponsor tops up €250",
-      "expected": "Ledger +€250 once",
-      "actual": "+€250",
-      "pass": true
-    },
-    {
-      "id": "F4",
-      "kind": "Failure",
-      "name": "Duplicate fulfilment / webhook replay",
-      "expected": "Processed once",
-      "actual": "1 ledger entry",
-      "pass": true
-    },
-    {
-      "id": "F5",
-      "kind": "Failure",
-      "name": "Checkout cancelled",
-      "expected": "No ledger entry",
-      "actual": "0 entries",
-      "pass": true
-    },
-    {
-      "id": "B5",
-      "kind": "Boundary",
-      "name": "Top-up €5 / €10,000 / €4.99 / €10,000.01",
-      "expected": "accepted, accepted, rejected, rejected",
-      "actual": "accepted, accepted, rejected, rejected",
-      "pass": true
-    },
-    {
-      "id": "O1",
-      "kind": "Ordinary",
-      "name": "€18.40 at Domino's on Pizza Night",
-      "expected": "Approved, rules < 40, no flag",
-      "actual": "approved, score 0, no flag",
-      "pass": true
-    },
-    {
-      "id": "O3",
-      "kind": "Ordinary",
-      "name": "Printing €14 (MCC 2741) for Drama",
-      "expected": "Approved, low",
-      "actual": "approved, score 0",
-      "pass": true
-    },
-    {
-      "id": "B7",
-      "kind": "Boundary",
-      "name": "€0.01 merchant card check",
-      "expected": "Approved, never flagged",
-      "actual": "approved, no flag",
-      "pass": true
-    },
-    {
-      "id": "F6",
-      "kind": "Failure",
-      "name": "Gambling MCC 7995",
-      "expected": "Declined (H4) + flagged",
-      "actual": "blocked_mcc, flag high",
-      "pass": true
-    },
-    {
-      "id": "F7",
-      "kind": "Failure",
-      "name": "Injection text as merchant name on an odd purchase",
-      "expected": "Still flagged; descriptor delimited as untrusted data",
-      "actual": "flag medium, delimited true",
-      "pass": true
-    },
-    {
-      "id": "G1",
-      "kind": "Ordinary",
-      "name": "€20 on an unassigned officer card",
-      "expected": "Approved as general spending (no event)",
-      "actual": "approved, event none",
-      "pass": true
-    },
-    {
-      "id": "G2",
-      "kind": "Boundary",
-      "name": "Unallocated money + €0.01 on an unassigned card",
-      "expected": "Approved: event budgets are advisory",
-      "actual": "null",
-      "pass": true
-    },
-    {
-      "id": "B3",
-      "kind": "Boundary",
-      "name": "Amount exactly at the per-purchase cap",
-      "expected": "Approved; R4 fires",
-      "actual": "approved, R4 true",
-      "pass": true
-    },
-    {
-      "id": "B3b",
-      "kind": "Boundary",
-      "name": "Cap + €0.01",
-      "expected": "Declined by hard spending controls",
-      "actual": "spending_controls",
-      "pass": true
-    },
-    {
-      "id": "B9",
-      "kind": "Boundary",
-      "name": "Monthly card limit exactly reached, then + €0.01",
-      "expected": "Exact limit approved; next cent declined",
-      "actual": "approved, then spending_controls (H6)",
-      "pass": true
-    },
-    {
-      "id": "B8",
-      "kind": "Boundary",
-      "name": "Issue a sixth officer card",
-      "expected": "Rejected: 5 cards per society",
-      "actual": "rejected (card_limit)",
-      "pass": true
-    },
-    {
-      "id": "B2",
-      "kind": "Boundary",
-      "name": "Remaining budget + €0.01",
-      "expected": "Approved with E1 review signal",
-      "actual": "null",
-      "pass": true
-    },
-    {
-      "id": "B1",
-      "kind": "Boundary",
-      "name": "Amount exactly equal to remaining budget",
-      "expected": "Approved; remaining → €0.00",
-      "actual": "approved, remaining €0.00",
-      "pass": true
-    },
-    {
-      "id": "B6",
-      "kind": "Boundary",
-      "name": "End + 3 days 23:59 vs end + 4 days",
-      "expected": "Both approved; H2 triggers review",
-      "actual": "approved vs null",
-      "pass": true
-    },
-    {
-      "id": "B4",
-      "kind": "Boundary",
-      "name": "Society with < 5 purchases in a category (cold start)",
-      "expected": "R3 falls back to the global baseline",
-      "actual": "society n=0, R3 not fired (within global norm)",
-      "pass": true
-    },
-    {
-      "id": "F8",
-      "kind": "Failure",
-      "name": "Purchase on a frozen card",
-      "expected": "Declined (H1)",
-      "actual": "card_inactive",
-      "pass": true
-    },
-    {
-      "id": "F9",
-      "kind": "Failure",
-      "name": "Two concurrent €60 auths on a €100 budget",
-      "expected": "One approved, one declined",
-      "actual": "1 approved",
-      "pass": true
-    },
-    {
-      "id": "D1",
+      "id": "P1",
       "kind": "Invariant",
-      "name": "Duplicate marketplace request is idempotent",
-      "expected": "One authorization, one €18.40 balance movement",
-      "actual": "1 authorization, same=true",
+      "name": "Top-up fulfillment is idempotent",
+      "expected": "Balance increases exactly €250",
+      "actual": "+€250",
       "pass": true
     },
     {
       "id": "F1",
       "kind": "Failure",
-      "name": "OpenRouter error / timeout",
-      "expected": "Rules-only result marked AI unavailable; auth unaffected",
-      "actual": "approved, rules_fallback: AI unavailable: OpenRouter 401: {\"error\":{\"message\":\"Missing",
+      "name": "Missing Stripe never creates a local substitute",
+      "expected": "Pending Stripe request with a clear error",
+      "actual": "pending/stripe/no card",
       "pass": true
     },
     {
-      "id": "J1",
-      "kind": "Failure",
-      "name": "JEV high + rules ≥ 40 (stubbed OpenRouter)",
-      "expected": "Assessment stored, card auto-frozen, high flag",
-      "actual": "jev/high, card inactive, flag high",
-      "pass": true
-    },
-    {
-      "id": "J2",
-      "kind": "Failure",
-      "name": "Flag evidence comes from input fields, not the model",
-      "expected": "Both flags (category, timing) present and every € / MCC reference verified",
-      "actual": "MCC_MISMATCH:true, TIMING:true",
-      "pass": true
-    },
-    {
-      "id": "J3",
-      "kind": "Failure",
-      "name": "Privacy & request shape sent to OpenRouter",
-      "expected": "No member names/emails; Jev model with typed risk/action questions",
-      "actual": "names absent, model typesafe/jev-1.13, questions 11",
-      "pass": true
-    },
-    {
-      "id": "F2b",
-      "kind": "Failure",
-      "name": "Decisions API returns garbage twice (stubbed)",
-      "expected": "One retry, then rules fallback",
-      "actual": "2 calls, rules_fallback: AI unavailable: SyntaxError: Unexpected token 'u', \"upstream hiccup\" is not valid JSON",
-      "pass": true
-    },
-    {
-      "id": "F2",
-      "kind": "Failure",
-      "name": "JEV returns invalid JSON / out-of-schema values",
-      "expected": "Rejected by Zod → retry → fallback",
-      "actual": "rejected (5 issues)",
-      "pass": true
-    },
-    {
-      "id": "F3",
-      "kind": "Failure",
-      "name": "Webhook with a bad signature",
-      "expected": "400, nothing written",
-      "actual": "400, 0 entries written",
-      "pass": true
-    },
-    {
-      "id": "F4b",
-      "kind": "Failure",
-      "name": "Signed checkout webhook delivered twice",
-      "expected": "200 both times, credited once",
-      "actual": "200/200, 1 credit, duplicate=true",
-      "pass": true
-    },
-    {
-      "id": "F10",
-      "kind": "Failure",
-      "name": "Stripe API error issuing an officer card",
-      "expected": "Card saved as pending with a clear error; retry possible",
-      "actual": "card pending: Invalid API Key provided: sk_test_****************",
-      "pass": true
-    },
-    {
-      "id": "A1",
+      "id": "S5",
       "kind": "Invariant",
-      "name": "Officer's lists: purchases and cards",
-      "expected": "Only their own purchases and their own card",
-      "actual": "69 purchases, owners mem_robotics_2; cards mem_robotics_2",
-      "pass": true
-    },
-    {
-      "id": "A2",
-      "kind": "Invariant",
-      "name": "Another officer's purchase; managing the society",
-      "expected": "Officer no, own treasurer yes, other society's treasurer no; only the treasurer manages",
-      "actual": "officer false, treasurer true, other treasurer false; manage: officer false, other treasurer false",
-      "pass": true
-    },
-    {
-      "id": "A3",
-      "kind": "Invariant",
-      "name": "Events an officer can open",
-      "expected": "Their card's event yes, others no; treasurer all",
-      "actual": "own true, other false, treasurer true",
-      "pass": true
-    },
-    {
-      "id": "W1",
-      "kind": "Invariant",
-      "name": "Council onboarding requires a treasurer",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W2",
-      "kind": "Invariant",
-      "name": "Members cannot create societies or add other members",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W3",
-      "kind": "Invariant",
-      "name": "Reporting falls back to the treasurer",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W4",
-      "kind": "Invariant",
-      "name": "Five included card slots enforced",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W5",
-      "kind": "Invariant",
-      "name": "Cross-society card and event management denied",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W6",
-      "kind": "Invariant",
-      "name": "Paid extra card slot is idempotent",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W7",
-      "kind": "Invariant",
-      "name": "Extra-card entitlement expires; no sixth usable slot",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W8",
-      "kind": "Invariant",
-      "name": "Frozen cards count; cancelled cards release slots",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W9",
-      "kind": "Invariant",
-      "name": "Ordinary members cannot be issued committee cards",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W10",
-      "kind": "Invariant",
-      "name": "Routine policy-compliant payment needs no review",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W11",
-      "kind": "Invariant",
-      "name": "Only owning treasurer reviews payment",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W12",
-      "kind": "Invariant",
-      "name": "Merchant + range + cadence match skips routine review",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W13",
-      "kind": "Invariant",
-      "name": "Duplicate payment returns to review",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W14",
-      "kind": "Invariant",
-      "name": "Routine amount outside a mandate needs no review",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W15",
-      "kind": "Invariant",
-      "name": "Routine different-currency payment needs no review",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W16",
-      "kind": "Invariant",
-      "name": "Routine different merchant needs no review",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W17",
-      "kind": "Invariant",
-      "name": "Routine different cardholder needs no review",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W18",
-      "kind": "Invariant",
-      "name": "Over-limit payment is declined atomically",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W19",
-      "kind": "Invariant",
-      "name": "Misuse review does not reverse settled funds",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W20",
-      "kind": "Invariant",
-      "name": "Insufficient funds and blocked MCC still decline",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W21",
-      "kind": "Invariant",
-      "name": "Revoked mandate does not claim an automatic match",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W22",
-      "kind": "Invariant",
-      "name": "Expense approval reserves no fake payment",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W23",
-      "kind": "Invariant",
-      "name": "Expense and receipt ownership enforced",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W24",
-      "kind": "Invariant",
-      "name": "External repayment debits ledger exactly once",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W25",
-      "kind": "Invariant",
-      "name": "Receipt type validation rejects HTML",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W26",
-      "kind": "Invariant",
-      "name": "Report fallback uses ledger evidence including repayments",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W27",
-      "kind": "Invariant",
-      "name": "Senior treasurer takes reporting ownership when assigned",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W28",
-      "kind": "Invariant",
-      "name": "Submission locks draft and only Council can approve",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W29",
-      "kind": "Invariant",
-      "name": "Council returns report, owner revises and resubmits",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "W30",
-      "kind": "Invariant",
-      "name": "Grant approval records amount without crediting funds",
-      "expected": "Pass",
-      "actual": "Pass",
-      "pass": true
-    },
-    {
-      "id": "L1",
-      "kind": "Invariant",
-      "name": "Ledger reconciles for all societies",
-      "expected": "available ≥ 0 and held = Σ pending holds",
-      "actual": "Drama Society ok, Robotics Society ok, Law Society ok, Hillwalking Club ok, E-Sports Society ok, Workflow Test ok",
+      "name": "Reset returns to the clean Stripe-only baseline",
+      "expected": "1 society, 0 cards and €0",
+      "actual": "1 society, 0 cards, €0.00",
       "pass": true
     }
   ]

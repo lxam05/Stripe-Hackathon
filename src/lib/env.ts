@@ -1,6 +1,5 @@
-// Central configuration. Every integration degrades gracefully:
-//  - no STRIPE_SECRET_KEY  → simulated Checkout + MockAdapter card network
-//  - no OPENROUTER_API_KEY → JEV unavailable, rules-only assessments ("AI unavailable")
+// Central configuration. Checkout can still use its labelled local simulation,
+// but officer cards always require Stripe Issuing. JEV falls back to rules only.
 
 const stripeKey = process.env.STRIPE_SECRET_KEY?.trim() || "";
 
@@ -16,10 +15,6 @@ export const env = {
   stripeSecretKey: stripeKey,
   stripeWebhookSecret: process.env.STRIPE_WEBHOOK_SECRET?.trim() || "",
   stripePlanPriceId: process.env.STRIPE_SOCIETY_PLAN_PRICE_ID?.trim() || "",
-  /** "stripe" uses real Stripe Issuing (sandbox); anything else uses the local MockAdapter. */
-  issuingMode: (process.env.ISSUING_MODE === "stripe" && stripeKey ? "stripe" : "mock") as
-    | "stripe"
-    | "mock",
   openRouterKey: process.env.OPENROUTER_API_KEY?.trim() || "",
   openRouterBaseUrl: process.env.OPENROUTER_BASE_URL?.trim() || "https://openrouter.ai/api/v1",
   jevModel: process.env.JEV_MODEL?.trim() || "typesafe/jev-1.13",

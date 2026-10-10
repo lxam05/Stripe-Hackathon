@@ -223,7 +223,7 @@ export function Simulator({
               <div>
                 <div className="display text-3xl">{latest.approved ? "Approved" : "Declined"}</div>
                 <div className="text-xs text-ink-3">
-                  {latest.decision_ms.toFixed(1)} ms decision · rules score {latest.rules_score} · {latest.mode === "stripe" ? "Stripe Issuing" : "MockAdapter"}
+                  {latest.decision_ms.toFixed(1)} ms decision · rules score {latest.rules_score} · Stripe Issuing
                   {latest.captured && " · captured"}
                 </div>
               </div>

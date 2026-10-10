@@ -142,10 +142,10 @@ The automated results are generated into `data/test-results.json`; do not claim 
 ## 12. Demo sequence
 
 1. Top up UCD Drama Society by €250 and continue from the success page as Aoife, treasurer.
-2. Issue Orla the fifth officer card with a €200 per-purchase limit, €500 monthly limit and Standard society spending profile.
-3. Open the Campus marketplace from Orla's card and buy the €18.40 pizza.
-4. Show the receipt's cardholder, masked card and exact society balance movement, then show Orla's increased monthly spend on the dashboard.
-5. Open Cian's existing €149.99 GameStop purchase and show the real JEV assessment and pending treasurer review.
+2. Start with zero cards and issue Orla a Stripe sandbox card from the site with a €200 per-purchase limit, €500 monthly limit and Standard society spending profile.
+3. Open the Campus marketplace from Orla's newly issued card and buy the €18.40 pizza.
+4. Show the receipt's cardholder, masked Stripe card and exact society balance movement, then show Orla's increased monthly spend on the dashboard.
+5. Buy the console with a site-issued card to create the contextual JEV review; no seeded card or transaction is used.
 6. Optional: reproduce the console purchase in the marketplace or use the simulator for broader rules/failure cases.
 
 ## 13. Non-goals and launch gates

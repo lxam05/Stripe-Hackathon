@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Simulator } from "@/components/simulator";
 import { EmptyState, PageHeader, Panel, button } from "@/components/ui";
-import { env, stripeEnabled } from "@/lib/env";
+import { stripeEnabled } from "@/lib/env";
 import { requireActor } from "@/lib/guard";
 import { MCC_TABLE } from "@/lib/mcc";
 import { simulatorCards } from "@/lib/queries";
@@ -37,9 +37,7 @@ export default async function SimulatorPage({ searchParams }: PageProps<"/simula
     <>
       <PageHeader eyebrow="Demo tool" title="Purchase simulator">
         Fire a card authorisation as if a merchant charged an officer card.{" "}
-        {env.issuingMode === "stripe"
-          ? "Stripe Issuing test helpers create a real sandbox authorisation; our webhook decides it."
-          : "It runs through exactly the same decision engine the Stripe webhook uses (MockAdapter)."}
+        Stripe Issuing test helpers create a real sandbox authorisation; our webhook decides it.
       </PageHeader>
       {cards.length === 0 ? (
         <Panel>
@@ -56,7 +54,7 @@ export default async function SimulatorPage({ searchParams }: PageProps<"/simula
           presets={MERCHANT_PRESETS.map((p) => ({ ...p }))}
           mccs={MCC_TABLE.map((m) => ({ code: m.code, label: m.label, policy: m.defaultPolicy }))}
           today={today}
-          stripe={stripeEnabled() && env.issuingMode === "stripe"}
+          stripe={stripeEnabled()}
         />
       )}
     </>

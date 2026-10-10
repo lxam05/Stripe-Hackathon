@@ -30,8 +30,9 @@ export async function POST(req: Request) {
       },
       actorLabel(actor),
     );
+    if (!res.issued.ok) return apiError(502, "card_issue_failed", `Stripe did not create the card: ${res.issued.error}`);
     return NextResponse.json(
-      { card_id: res.cardId, card_issued: res.issued.ok, card_error: res.issued.ok ? null : res.issued.error },
+      { card_id: res.cardId, card_issued: true, card_error: null },
       { status: 201 },
     );
   } catch (e) {

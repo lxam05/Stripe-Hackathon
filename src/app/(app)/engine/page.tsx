@@ -41,7 +41,7 @@ export default async function EnginePage() {
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2">
         <Status ok={live} name="JEV via OpenRouter" value={live ? `${env.jevModel} · ${env.openRouterBaseUrl.replace(/^https?:\/\//, "").replace(/\/v1\/?$/, "")}/alpha/decisions` : "No OPENROUTER_API_KEY: rules only"} />
-        <Status ok={stripeEnabled()} name="Stripe" value={stripeEnabled() ? `Sandbox · Issuing ${env.issuingMode === "stripe" ? "live" : "simulated"}` : "Simulated checkout"} />
+        <Status ok={stripeEnabled()} name="Stripe" value={stripeEnabled() ? "Sandbox · Issuing connected" : "Issuing unavailable · no cards"} />
       </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">

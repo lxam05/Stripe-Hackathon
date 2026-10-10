@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { cardCapacity } from "@/lib/cards";
+import { cardCapacity, syncSocietyCardsFromStripe } from "@/lib/cards";
 import { CreditCard, Lock, Plus } from "lucide-react";
 import { CardControls, IssueCardForm, MonthBar, ReplaceCardButton } from "@/components/card-controls";
 import { CardStatusPill, Notice, PageHeader, Panel, SectionTitle, button } from "@/components/ui";
@@ -18,6 +18,12 @@ export const metadata = { title: "Cards" };
 export default async function CardsPage() {
   const actor = await requireMember();
   const soc = getSociety(actor.societyId)!;
+  let stripeSyncError: string | null = null;
+  try {
+    await syncSocietyCardsFromStripe(soc.id);
+  } catch (error) {
+    stripeSyncError = error instanceof Error ? error.message : "Stripe Issuing could not be reached.";
+  }
   const CARDS_PER_SOCIETY = cardCapacity(soc.id);
   const isTreasurer = actor.role === "treasurer";
   // Treasurer and senior treasurer see every card; anyone else only their own.
@@ -66,6 +72,14 @@ export default async function CardsPage() {
               The society&rsquo;s plan has ended. It works again as soon as your treasurer renews it.
             </Notice>
           )}
+        </div>
+      )}
+
+      {stripeSyncError && (
+        <div className="mb-6">
+          <Notice tone="bad" title="Stripe Issuing is unavailable">
+            {stripeSyncError} No local or demo cards are substituted.
+          </Notice>
         </div>
       )}
 

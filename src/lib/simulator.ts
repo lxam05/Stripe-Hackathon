@@ -1,14 +1,11 @@
-import { captureAuthorization, decideAuthorization, type Decision } from "./authorize";
-import { enqueueAssessment } from "./assess";
 import { getDb, nowIso } from "./db";
 import { env } from "./env";
 import { mccInfo } from "./mcc";
 import { UserError } from "./errors";
 import { getStripe } from "./stripe";
 
-// Purchase simulator (PRD M9). Mock mode runs the same decision engine the
-// webhook uses; Stripe mode fires a real sandbox authorisation via test helpers
-// and waits for our webhook to record the decision.
+// The purchase simulator fires a real Stripe sandbox authorization via test
+// helpers and waits for the signed webhook to record our decision.
 
 export interface SimInput {
   cardId: string;
@@ -41,7 +38,17 @@ export const MERCHANT_PRESETS = [
   },
 ] as const;
 
-export async function simulatePurchase(input: SimInput): Promise<Decision & { mode: "mock" | "stripe"; captured: boolean }> {
+export async function simulatePurchase(input: SimInput): Promise<{
+  mode: "stripe";
+  authorizationId: string | null;
+  approved: boolean;
+  declineReason: string | null;
+  declineCode: string | null;
+  score: number;
+  signals: { id: string; label: string; points: number; hard?: boolean; evidence: string }[];
+  decisionMs: number;
+  captured: boolean;
+}> {
   if (!Number.isInteger(input.amountCents) || input.amountCents < 1) throw new UserError("invalid_amount", "Enter an amount of at least €0.01.");
   if (input.amountCents > 1_000_000) throw new UserError("invalid_amount", "The simulator caps purchases at €10,000.");
   if (!/^\d{4}$/.test(input.mcc)) throw new UserError("invalid_mcc", "MCC must be four digits.");
@@ -54,7 +61,7 @@ export async function simulatePurchase(input: SimInput): Promise<Decision & { mo
     | undefined;
   if (!card) throw new UserError("unknown_card", "Pick a card.", 404);
 
-  if (card.network === "stripe" && env.issuingMode === "stripe") {
+  if (card.network === "stripe" && env.stripeSecretKey) {
     const info = mccInfo(input.mcc);
     if (!info.stripe) throw new UserError("invalid_mcc", `MCC ${input.mcc} isn't mapped to a Stripe category.`);
     // Stripe stamps the authorisation with the real time; hand the override to our webhook.
@@ -105,19 +112,5 @@ export async function simulatePurchase(input: SimInput): Promise<Decision & { mo
     }
   }
 
-  const d = decideAuthorization({
-    cardId: card.id,
-    amountCents: input.amountCents,
-    merchantName,
-    mcc: input.mcc,
-    merchantCity: input.city ?? "Dublin",
-    merchantCountry: input.country,
-    at: input.at ?? new Date().toISOString(),
-  });
-  let captured = false;
-  if (d.authorizationId) {
-    if (d.approved && input.autoCapture) captured = captureAuthorization(d.authorizationId);
-    enqueueAssessment(d.authorizationId);
-  }
-  return { ...d, mode: "mock", captured };
+  throw new UserError("stripe_required", "This card is not backed by Stripe Issuing. Create a new card from the Cards page.", 503);
 }
